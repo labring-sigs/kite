@@ -26,5 +26,4 @@ Kite supports several environment variables by default to change the default val
 
 Optional frontend environment variables (build-time):
 
-- **VITE_SEALOS_AUTO_LOGIN**: `true` or `false`. Controls whether frontend should auto-attempt Sealos session login. If unset, Kite auto-detects iframe context and attempts login only in iframe.
-- **VITE_SEALOS_PARENT_ORIGIN**: Restrict parent-window `postMessage` origin when requesting Sealos session in iframe mode. If unset, defaults to `*`.
+- **VITE_SEALOS_AUTO_LOGIN**: `true` or `false`. Controls whether frontend should auto-attempt Sealos SDK session login. Default is `true`.

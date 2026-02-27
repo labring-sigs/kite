@@ -53,6 +53,7 @@
     "react-i18next": "^16.5.2",
     "react-router-dom": "^7.12.0",
     "recharts": "2.15.4",
+    "sealos-desktop-sdk": "0.1.14",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18"

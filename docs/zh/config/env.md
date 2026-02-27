@@ -26,5 +26,4 @@ Kite 默认支持一些环境变量，来改变一些配置项的默认值。
 
 可选前端环境变量（构建时生效）：
 
-- **VITE_SEALOS_AUTO_LOGIN**：`true` 或 `false`，控制前端是否自动尝试 Sealos 会话登录。如果不设置，Kite 会自动检测 iframe 场景，仅在 iframe 中尝试自动登录。
-- **VITE_SEALOS_PARENT_ORIGIN**：iframe 模式下请求 Sealos 会话时，限制父窗口 `postMessage` 的来源域名。不设置时默认 `*`。
+- **VITE_SEALOS_AUTO_LOGIN**：`true` 或 `false`，控制前端是否自动尝试 Sealos SDK 会话登录，默认 `true`。

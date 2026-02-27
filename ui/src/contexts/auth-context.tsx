@@ -7,8 +7,8 @@ import {
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { createSealosApp, sealosApp } from 'sealos-desktop-sdk/app'
 
-import { getSealosSession, shouldTrySealosAutoLogin } from '@/lib/sealos'
 import { withSubPath } from '@/lib/subpath'
 
 interface User {
@@ -46,6 +46,71 @@ export function useAuth() {
 
 interface AuthProviderProps {
   children: ReactNode
+}
+
+interface SealosSessionUser {
+  k8s_username?: string
+  name?: string
+  avatar?: string
+  nsid?: string
+  ns_uid?: string
+  userCrUid?: string
+  userId?: string
+  userUid?: string
+}
+
+interface SealosSession {
+  token: string
+  kubeconfig: string
+  user?: SealosSessionUser
+}
+
+const getEnvFlag = (value: string | undefined): boolean | null => {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return null
+}
+
+const shouldTrySealosAutoLogin = (): boolean => {
+  const envFlag = getEnvFlag(import.meta.env.VITE_SEALOS_AUTO_LOGIN)
+  if (envFlag !== null) return envFlag
+  return true
+}
+
+const normalizeSealosSession = (raw: unknown): SealosSession | null => {
+  if (typeof raw !== 'object' || raw === null) return null
+  const value = raw as Record<string, unknown>
+  const token = typeof value.token === 'string' ? value.token.trim() : ''
+  const kubeconfig =
+    typeof value.kubeconfig === 'string' ? value.kubeconfig.trim() : ''
+  if (!token || !kubeconfig) return null
+  const user =
+    typeof value.user === 'object' && value.user !== null
+      ? (value.user as SealosSessionUser)
+      : undefined
+  return { token, kubeconfig, user }
+}
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+  await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Sealos session timeout')), timeoutMs)
+    }),
+  ])
+
+const getSealosSession = async (timeoutMs = 5000): Promise<SealosSession | null> => {
+  const cleanup = createSealosApp()
+  try {
+    const rawSession = await withTimeout(sealosApp.getSession(), timeoutMs)
+    return normalizeSealosSession(rawSession)
+  } catch {
+    return null
+  } finally {
+    if (typeof cleanup === 'function') {
+      cleanup()
+    }
+  }
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
