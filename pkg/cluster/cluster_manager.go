@@ -274,6 +274,28 @@ var (
 	syncNow = make(chan struct{}, 1)
 )
 
+func (cm *ClusterManager) TriggerSync() {
+	select {
+	case syncNow <- struct{}{}:
+	default:
+	}
+}
+
+func (cm *ClusterManager) WaitForCluster(name string, timeout time.Duration) bool {
+	if name == "" {
+		return false
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, ok := cm.clusters[name]; ok {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	_, ok := cm.clusters[name]
+	return ok
+}
+
 func syncClusters(cm *ClusterManager) error {
 	clusters, err := model.ListClusters()
 	if err != nil {

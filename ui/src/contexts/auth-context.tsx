@@ -6,7 +6,9 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
+import { getSealosSession, shouldTrySealosAutoLogin } from '@/lib/sealos'
 import { withSubPath } from '@/lib/subpath'
 
 interface User {
@@ -50,6 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [providers, setProviders] = useState<string[]>([])
+  const queryClient = useQueryClient()
 
   const loadProviders = async () => {
     try {
@@ -63,7 +66,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const checkAuth = async () => {
+  const checkAuthInternal = async (): Promise<User | null> => {
     try {
       const response = await fetch(withSubPath('/api/auth/user'), {
         credentials: 'include',
@@ -80,15 +83,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
           )
         }
         setUser(user)
+        return user
       } else {
         setUser(null)
+        return null
       }
     } catch (error) {
       console.error('Auth check failed:', error)
       setUser(null)
-    } finally {
-      setIsLoading(false)
+      return null
     }
+  }
+
+  const checkAuth = async () => {
+    await checkAuthInternal()
   }
 
   const login = async (provider: string = 'github') => {
@@ -173,11 +181,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     const initAuth = async () => {
-      await loadProviders()
-      await checkAuth()
+      setIsLoading(true)
+      try {
+        await loadProviders()
+        const currentUser = await checkAuthInternal()
+
+        if (!currentUser && shouldTrySealosAutoLogin()) {
+          const sealosSession = await getSealosSession()
+          if (sealosSession) {
+            const response = await fetch(withSubPath('/api/auth/login/sealos'), {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                token: sealosSession.token,
+                kubeconfig: sealosSession.kubeconfig,
+                user: sealosSession.user,
+              }),
+            })
+
+            if (response.ok) {
+              const data = await response.json()
+              if (data?.cluster && typeof data.cluster === 'string') {
+                localStorage.setItem('current-cluster', data.cluster)
+                document.cookie = `x-cluster-name=${data.cluster}; path=/`
+              }
+              await queryClient.invalidateQueries({ queryKey: ['init-check'] })
+              await queryClient.invalidateQueries({ queryKey: ['clusters'] })
+              await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
+              await checkAuthInternal()
+            }
+          }
+        }
+      } finally {
+        setIsLoading(false)
+      }
     }
     initAuth()
-  }, [])
+  }, [queryClient])
 
   // Set up automatic token refresh
   useEffect(() => {

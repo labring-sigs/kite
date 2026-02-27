@@ -10,6 +10,12 @@ Kite 默认支持一些环境变量，来改变一些配置项的默认值。
 - **JWT_SECRET**：用于签名和验证 JWT 的密钥
 - **KITE_ENCRYPT_KEY**：用于加密敏感数据的密钥, 例如用户密码，OAuth 的 clientSecret ，kubeconfig 等。
 
+- **AUTH_COOKIE_SAMESITE**：认证 Cookie 的 SameSite 策略。可选值：`lax`、`strict`、`none`，默认 `lax`。当 Kite 以跨站 iframe 方式嵌入（例如 Sealos）时，建议设置为 `none`。
+- **AUTH_COOKIE_SECURE**：认证 Cookie 的 Secure 策略。可选值：`auto`、`true`、`false`，默认 `auto`。当 `AUTH_COOKIE_SAMESITE=none` 时，必须设置为 `true`，并且使用 HTTPS。
+
+- **SEALOS_AUTH_ENABLED**：是否启用 Sealos 登录接口（`/api/auth/login/sealos`），默认 `false`。
+- **SEALOS_JWT_SECRET**：用于校验 Sealos JWT 的密钥。Kite 对 Sealos token 固定使用 `HS256` 校验。
+
 - **HOST**: 用户 OAuth 2.0 授权回调地址生成，默认会从请求头获取，如果您发现结果不及预期可以手动配置此环境变量。
 
 - **NODE_TERMINAL_IMAGE**: 用于生成 Node Terminal Agent 的 Docker 镜像。
@@ -17,3 +23,8 @@ Kite 默认支持一些环境变量，来改变一些配置项的默认值。
 - **ENABLE_ANALYTICS**：启用数据分析功能，默认值为 `false`。当启用后，Kite 将收集有限数据以帮助改进产品。
 
 - **PORT**：Kite 运行的端口，默认值为 `8080`。
+
+可选前端环境变量（构建时生效）：
+
+- **VITE_SEALOS_AUTO_LOGIN**：`true` 或 `false`，控制前端是否自动尝试 Sealos 会话登录。如果不设置，Kite 会自动检测 iframe 场景，仅在 iframe 中尝试自动登录。
+- **VITE_SEALOS_PARENT_ORIGIN**：iframe 模式下请求 Sealos 会话时，限制父窗口 `postMessage` 的来源域名。不设置时默认 `*`。

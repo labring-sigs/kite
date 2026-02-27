@@ -42,6 +42,12 @@ var (
 	DisableVersionCheck = false
 
 	APIKeyProvider = "api_key"
+
+	AuthCookieSameSite = "lax"
+	AuthCookieSecure   = "auto"
+
+	SealosAuthEnabled = false
+	SealosJWTSecret   = ""
 )
 
 func LoadEnvs() {
@@ -99,5 +105,30 @@ func LoadEnvs() {
 		}
 		Base = strings.TrimRight(v, "/")
 		klog.Infof("Using base path: %s", Base)
+	}
+
+	if v := strings.TrimSpace(os.Getenv("AUTH_COOKIE_SAMESITE")); v != "" {
+		switch strings.ToLower(v) {
+		case "lax", "strict", "none":
+			AuthCookieSameSite = strings.ToLower(v)
+		default:
+			klog.Warningf("Invalid AUTH_COOKIE_SAMESITE=%q, use lax|strict|none, fallback to lax", v)
+		}
+	}
+
+	if v := strings.TrimSpace(os.Getenv("AUTH_COOKIE_SECURE")); v != "" {
+		switch strings.ToLower(v) {
+		case "auto", "true", "false":
+			AuthCookieSecure = strings.ToLower(v)
+		default:
+			klog.Warningf("Invalid AUTH_COOKIE_SECURE=%q, use auto|true|false, fallback to auto", v)
+		}
+	}
+
+	if v := strings.TrimSpace(os.Getenv("SEALOS_AUTH_ENABLED")); v == "true" {
+		SealosAuthEnabled = true
+	}
+	if v := strings.TrimSpace(os.Getenv("SEALOS_JWT_SECRET")); v != "" {
+		SealosJWTSecret = v
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
 	"github.com/zxh326/kite/pkg/rbac"
@@ -13,12 +14,14 @@ import (
 )
 
 type AuthHandler struct {
-	manager *OAuthManager
+	manager        *OAuthManager
+	clusterManager *cluster.ClusterManager
 }
 
-func NewAuthHandler() *AuthHandler {
+func NewAuthHandler(cm *cluster.ClusterManager) *AuthHandler {
 	return &AuthHandler{
-		manager: NewOAuthManager(),
+		manager:        NewOAuthManager(),
+		clusterManager: cm,
 	}
 }
 
@@ -537,15 +540,37 @@ func (h *AuthHandler) GetOAuthProvider(c *gin.Context) {
 	})
 }
 
-// setCookieSecure sets a cookie with SameSite=Lax and HttpOnly=true. It marks Secure=true
-// when the request is over TLS or X-Forwarded-Proto indicates https, or when
-// common.Host appears to be an https scheme.
-func setCookieSecure(c *gin.Context, name, value string, maxAge int) {
-	// Determine if secure should be set
-	secure := strings.HasPrefix(common.Host, "https://") || (c.Request != nil && (c.Request.TLS != nil || strings.EqualFold(c.Request.Header.Get("X-Forwarded-Proto"), "https")))
+func resolveCookieSameSite() http.SameSite {
+	switch strings.ToLower(strings.TrimSpace(common.AuthCookieSameSite)) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	default:
+		return http.SameSiteLaxMode
+	}
+}
 
-	// Set SameSite to Lax for OAuth flows while still providing CSRF protection
-	c.SetSameSite(http.SameSiteLaxMode)
-	// The SetCookie function signature is (name, value string, maxAge int, path, domain string, secure, httpOnly bool)
-	c.SetCookie(name, value, maxAge+60*60, "/", "", secure, true)
+func resolveCookieSecure(c *gin.Context) bool {
+	switch strings.ToLower(strings.TrimSpace(common.AuthCookieSecure)) {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return strings.HasPrefix(common.Host, "https://") || (c.Request != nil && (c.Request.TLS != nil || strings.EqualFold(c.Request.Header.Get("X-Forwarded-Proto"), "https")))
+	}
+}
+
+func setCookie(c *gin.Context, name, value string, maxAge int, httpOnly bool) {
+	c.SetSameSite(resolveCookieSameSite())
+	c.SetCookie(name, value, maxAge+60*60, "/", "", resolveCookieSecure(c), httpOnly)
+}
+
+func setCookieSecure(c *gin.Context, name, value string, maxAge int) {
+	setCookie(c, name, value, maxAge, true)
+}
+
+func setCookieClient(c *gin.Context, name, value string, maxAge int) {
+	setCookie(c, name, value, maxAge, false)
 }

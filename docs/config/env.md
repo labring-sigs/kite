@@ -10,6 +10,12 @@ Kite supports several environment variables by default to change the default val
 - **JWT_SECRET**: Secret key used for signing and verifying JWT
 - **KITE_ENCRYPT_KEY**: Secret key used for encrypting sensitive data, such as user passwords, OAuth clientSecret, kubeconfig, etc.
 
+- **AUTH_COOKIE_SAMESITE**: SameSite policy for auth cookies. Supported values: `lax`, `strict`, `none`. Default is `lax`. For cross-site iframe embedding (for example Sealos), set this to `none`.
+- **AUTH_COOKIE_SECURE**: Secure policy for auth cookies. Supported values: `auto`, `true`, `false`. Default is `auto`. If `AUTH_COOKIE_SAMESITE=none`, this must be `true` and your site must use HTTPS.
+
+- **SEALOS_AUTH_ENABLED**: Enable Sealos login API (`/api/auth/login/sealos`), default is `false`.
+- **SEALOS_JWT_SECRET**: Secret used to verify Sealos JWT. Kite uses `HS256` for Sealos token verification.
+
 - **HOST**: Used for generating OAuth 2.0 authorization callback addresses, default will be obtained from request headers. If you find the result not as expected, you can manually configure this environment variable.
 
 - **NODE_TERMINAL_IMAGE**: Docker image used for generating Node Terminal Agent.
@@ -17,3 +23,8 @@ Kite supports several environment variables by default to change the default val
 - **ENABLE_ANALYTICS**: Enable data analytics functionality, default value is `false`. When enabled, Kite will collect limited data to help improve the product.
 
 - **PORT**: Port on which Kite runs, default value is `8080`.
+
+Optional frontend environment variables (build-time):
+
+- **VITE_SEALOS_AUTO_LOGIN**: `true` or `false`. Controls whether frontend should auto-attempt Sealos session login. If unset, Kite auto-detects iframe context and attempts login only in iframe.
+- **VITE_SEALOS_PARENT_ORIGIN**: Restrict parent-window `postMessage` origin when requesting Sealos session in iframe mode. If unset, defaults to `*`.

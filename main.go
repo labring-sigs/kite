@@ -88,11 +88,12 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 	r.GET("/api/v1/init_check", handlers.InitCheck)
 	r.GET("/api/v1/version", version.GetVersion)
 	// Auth routes (no auth required)
-	authHandler := auth.NewAuthHandler()
+	authHandler := auth.NewAuthHandler(cm)
 	authGroup := r.Group("/api/auth")
 	{
 		authGroup.GET("/providers", authHandler.GetProviders)
 		authGroup.POST("/login/password", authHandler.PasswordLogin)
+		authGroup.POST("/login/sealos", authHandler.SealosLogin)
 		authGroup.GET("/login", authHandler.Login)
 		authGroup.GET("/callback", authHandler.Callback)
 		authGroup.POST("/logout", authHandler.Logout)
