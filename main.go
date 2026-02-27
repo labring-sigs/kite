@@ -43,6 +43,10 @@ func setupStatic(r *gin.Engine) {
 			c.Redirect(http.StatusFound, base+"/")
 		})
 	}
+	rootFS, err := fs.Sub(static, "static")
+	if err != nil {
+		panic(err)
+	}
 	assertsFS, err := fs.Sub(static, "static/assets")
 	if err != nil {
 		panic(err)
@@ -51,6 +55,9 @@ func setupStatic(r *gin.Engine) {
 	assetsGroup := r.Group(base + "/assets")
 	assetsGroup.Use(middleware.StaticCache())
 	assetsGroup.StaticFS("/", http.FS(assertsFS))
+	r.GET(base+"/logo.svg", func(c *gin.Context) {
+		c.FileFromFS("logo.svg", http.FS(rootFS))
+	})
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if len(path) >= len(base)+5 && path[len(base):len(base)+5] == "/api/" {
