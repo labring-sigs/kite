@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { createSealosApp, sealosApp } from 'sealos-desktop-sdk/app'
+import * as sealosDesktopSDK from 'sealos-desktop-sdk/app'
 
 import { withSubPath } from '@/lib/subpath'
 
@@ -91,7 +91,10 @@ const normalizeSealosSession = (raw: unknown): SealosSession | null => {
   return { token, kubeconfig, user }
 }
 
-const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<T> =>
   await Promise.race([
     promise,
     new Promise<T>((_, reject) => {
@@ -99,10 +102,14 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<
     }),
   ])
 
-const getSealosSession = async (timeoutMs = 5000): Promise<SealosSession | null> => {
-  const cleanup = createSealosApp()
+const getSealosSession = async (
+  timeoutMs = 5000
+): Promise<SealosSession | null> => {
+  const cleanup = sealosDesktopSDK.createSealosApp()
   try {
-    const rawSession = await withTimeout(sealosApp.getSession(), timeoutMs)
+    // NOTE: Reassign to sidestep the CJS interop quirk where the sealosApp value doesn’t update.
+    const appClient = sealosDesktopSDK.sealosApp
+    const rawSession = await withTimeout(appClient.getSession(), timeoutMs)
     return normalizeSealosSession(rawSession)
   } catch {
     return null
@@ -254,18 +261,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (!currentUser && shouldTrySealosAutoLogin()) {
           const sealosSession = await getSealosSession()
           if (sealosSession) {
-            const response = await fetch(withSubPath('/api/auth/login/sealos'), {
-              method: 'POST',
-              credentials: 'include',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                token: sealosSession.token,
-                kubeconfig: sealosSession.kubeconfig,
-                user: sealosSession.user,
-              }),
-            })
+            const response = await fetch(
+              withSubPath('/api/auth/login/sealos'),
+              {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  token: sealosSession.token,
+                  kubeconfig: sealosSession.kubeconfig,
+                  user: sealosSession.user,
+                }),
+              }
+            )
 
             if (response.ok) {
               const data = await response.json()
@@ -275,7 +285,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
               }
               await queryClient.invalidateQueries({ queryKey: ['init-check'] })
               await queryClient.invalidateQueries({ queryKey: ['clusters'] })
-              await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
+              await queryClient.invalidateQueries({
+                queryKey: ['cluster-list'],
+              })
               await checkAuthInternal()
             }
           }
