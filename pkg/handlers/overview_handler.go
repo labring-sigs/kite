@@ -154,6 +154,7 @@ func InitCheck(c *gin.Context) {
 	if uc == 0 && !common.AnonymousUserEnabled {
 		c.SetCookie("auth_token", "", -1, "/", "", false, true)
 		c.JSON(http.StatusOK, gin.H{"initialized": false, "step": step})
+		return
 	}
 	if uc > 0 || common.AnonymousUserEnabled {
 		step++

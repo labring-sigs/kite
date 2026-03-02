@@ -20,8 +20,10 @@ export function RecentEvents() {
   const scopedNamespace = currentClusterInfo?.namespaceScoped
     ? currentClusterInfo.namespace
     : undefined
+  const shouldFetchEvents = !!currentClusterInfo
   const { data, isLoading } = useResources('events', scopedNamespace, {
     limit: 20,
+    disable: !shouldFetchEvents,
   })
 
   const events = useMemo(() => {
@@ -57,7 +59,7 @@ export function RecentEvents() {
     }
   }
 
-  if (isLoading) {
+  if (!shouldFetchEvents || isLoading) {
     return (
       <Card>
         <CardHeader className="animate-pulse">

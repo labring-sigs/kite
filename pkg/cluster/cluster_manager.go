@@ -83,7 +83,18 @@ func parseCurrentContextNamespace(content string) string {
 }
 
 func (cs *ClientSet) applyNamespaceScope(contextNamespace string) {
-	if contextNamespace == "" || cs.K8sClient == nil || cs.K8sClient.ClientSet == nil {
+	contextNamespace = strings.TrimSpace(contextNamespace)
+	if contextNamespace == "" {
+		return
+	}
+
+	// Honor kubeconfig current-context namespace directly:
+	// when context namespace is set, Kite keeps this cluster namespace-scoped.
+	cs.NamespaceScoped = true
+	cs.Namespace = contextNamespace
+	klog.Infof("Cluster %s namespace locked by kubeconfig context: %s", cs.Name, cs.Namespace)
+
+	if cs.K8sClient == nil || cs.K8sClient.ClientSet == nil {
 		return
 	}
 
@@ -91,12 +102,11 @@ func (cs *ClientSet) applyNamespaceScope(contextNamespace string) {
 	defer cancel()
 	_, err := cs.K8sClient.ClientSet.CoreV1().Pods("").List(ctx, metav1.ListOptions{Limit: 1})
 	if err == nil {
+		klog.Warningf("Cluster %s credentials can list cluster-wide pods, but Kite keeps namespace scope from kubeconfig context: %s", cs.Name, cs.Namespace)
 		return
 	}
 	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
-		cs.NamespaceScoped = true
-		cs.Namespace = contextNamespace
-		klog.Infof("Cluster %s detected as namespace-scoped, locked namespace: %s", cs.Name, cs.Namespace)
+		klog.Infof("Cluster %s cluster-scope probe denied, namespace scope remains locked: %s", cs.Name, cs.Namespace)
 		return
 	}
 	klog.Warningf("Namespace scope probe failed for cluster %s: %v", cs.Name, err)

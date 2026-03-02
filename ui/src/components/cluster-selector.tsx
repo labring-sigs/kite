@@ -13,6 +13,18 @@ import {
 
 const isAsciiClusterName = (value: string) => /^[\x21-\x7E]+$/.test(value)
 
+const getClusterDisplayName = (cluster?: {
+  name: string
+  namespaceScoped?: boolean
+  namespace?: string
+}) => {
+  if (!cluster) return 'Select Cluster'
+  if (cluster.namespaceScoped && cluster.namespace) {
+    return cluster.namespace
+  }
+  return cluster.name
+}
+
 export function ClusterSelector() {
   const {
     clusters,
@@ -50,7 +62,7 @@ export function ClusterSelector() {
           <span className="text-sm font-medium truncate">
             {isSwitching
               ? 'Switching...'
-              : currentClusterData?.name || 'Select Cluster'}
+              : getClusterDisplayName(currentClusterData)}
           </span>
           <IconChevronDown className="h-3 w-3 opacity-50" />
         </Button>
@@ -65,7 +77,9 @@ export function ClusterSelector() {
           >
             <div className="flex flex-col overflow-hidden">
               <div className="flex items-center gap-2">
-                <span className="font-medium">{cluster.name}</span>
+                <span className="font-medium">
+                  {getClusterDisplayName(cluster)}
+                </span>
                 {cluster.isDefault && (
                   <Badge className="text-xs">Default</Badge>
                 )}
