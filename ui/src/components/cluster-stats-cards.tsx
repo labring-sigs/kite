@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useCluster } from '@/hooks/use-cluster'
 
 interface ClusterStatsCardsProps {
   stats?: OverviewData
@@ -27,6 +28,8 @@ export function ClusterStatsCards({
   isLoading,
 }: ClusterStatsCardsProps) {
   const { t } = useTranslation()
+  const { currentClusterInfo } = useCluster()
+  const disableClusterScopeLinks = !!currentClusterInfo?.namespaceScoped
 
   if (isLoading || !stats) {
     return (
@@ -51,7 +54,7 @@ export function ClusterStatsCards({
       icon: IconServer,
       color: 'text-blue-600 dark:text-blue-400',
       bgColor: 'bg-blue-50 dark:bg-blue-950/50',
-      routePath: '/nodes',
+      routePath: disableClusterScopeLinks ? undefined : '/nodes',
     },
     {
       label: t('nav.pods'),
@@ -68,7 +71,7 @@ export function ClusterStatsCards({
       icon: IconFolders,
       color: 'text-purple-600 dark:text-purple-400',
       bgColor: 'bg-purple-50 dark:bg-purple-950/50',
-      routePath: '/namespaces',
+      routePath: disableClusterScopeLinks ? undefined : '/namespaces',
     },
     {
       label: t('nav.services'),

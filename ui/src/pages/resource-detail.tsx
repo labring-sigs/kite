@@ -1,6 +1,9 @@
-import { useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
-import { ResourceType } from '@/types/api'
+import { ResourceType, clusterScopeResources } from '@/types/api'
+import { useCluster } from '@/hooks/use-cluster'
 import { usePageTitle } from '@/hooks/use-page-title'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -33,11 +36,30 @@ function getResourceTypeName(resource: string): string {
 
 export function ResourceDetail() {
   const { resource, namespace, name } = useParams()
+  const { currentClusterInfo } = useCluster()
+  const isClusterScopeBlocked =
+    !!resource &&
+    !!currentClusterInfo?.namespaceScoped &&
+    clusterScopeResources.includes(resource as ResourceType)
+
+  useEffect(() => {
+    if (!isClusterScopeBlocked) return
+    toast.warning(
+      'This cluster is namespace-scoped. Cluster-level resources are disabled.',
+      {
+        id: 'cluster-scope-resource-guard',
+      }
+    )
+  }, [isClusterScopeBlocked])
 
   const resourceTypeName = resource ? getResourceTypeName(resource) : ''
   const pageTitle =
     resource && name ? `${name} (${resourceTypeName})` : 'Resource'
   usePageTitle(pageTitle)
+
+  if (isClusterScopeBlocked) {
+    return <Navigate to="/" replace />
+  }
 
   if (!resource || !name) {
     return (

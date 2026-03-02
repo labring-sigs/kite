@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { PodWithMetrics } from '@/types/api'
 import { getPodStatus } from '@/lib/k8s'
 import { formatDate, getAge } from '@/lib/utils'
+import { useCluster } from '@/hooks/use-cluster'
 import { Badge } from '@/components/ui/badge'
 import {
   Tooltip,
@@ -19,6 +20,8 @@ import { ResourceTable } from '@/components/resource-table'
 
 export function PodListPage() {
   const { t } = useTranslation()
+  const { currentClusterInfo } = useCluster()
+  const disableNodeLink = !!currentClusterInfo?.namespaceScoped
   // Define column helper outside of any hooks
   const columnHelper = createColumnHelper<PodWithMetrics>()
 
@@ -108,6 +111,13 @@ export function PodListPage() {
         enableColumnFilter: true,
         cell: ({ row }) => {
           if (row.original.spec?.nodeName) {
+            if (disableNodeLink) {
+              return (
+                <span className="font-medium text-muted-foreground">
+                  {row.original.spec?.nodeName}
+                </span>
+              )
+            }
             return (
               <div className="font-medium text-blue-500 hover:underline">
                 <Link to={`/nodes/${row.original.spec?.nodeName}`}>
@@ -137,7 +147,7 @@ export function PodListPage() {
         },
       }),
     ],
-    [columnHelper, t]
+    [columnHelper, disableNodeLink, t]
   )
 
   // Custom filter for pod search

@@ -1,6 +1,9 @@
-import { useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
-import { ResourceType } from '@/types/api'
+import { ResourceType, clusterScopeResources } from '@/types/api'
+import { useCluster } from '@/hooks/use-cluster'
 import { usePageTitle } from '@/hooks/use-page-title'
 
 import { ConfigMapListPage } from './configmap-list-page'
@@ -26,12 +29,31 @@ import { StatefulSetListPage } from './statefulset-list-page'
 
 export function ResourceList() {
   const { resource } = useParams()
+  const { currentClusterInfo } = useCluster()
+  const isClusterScopeBlocked =
+    !!resource &&
+    !!currentClusterInfo?.namespaceScoped &&
+    clusterScopeResources.includes(resource as ResourceType)
+
+  useEffect(() => {
+    if (!isClusterScopeBlocked) return
+    toast.warning(
+      'This cluster is namespace-scoped. Cluster-level resources are disabled.',
+      {
+        id: 'cluster-scope-resource-guard',
+      }
+    )
+  }, [isClusterScopeBlocked])
 
   usePageTitle(
     resource
       ? resource.charAt(0).toUpperCase() + resource.slice(1)
       : 'Resources'
   )
+
+  if (isClusterScopeBlocked) {
+    return <Navigate to="/" replace />
+  }
 
   switch (resource) {
     case 'pods':

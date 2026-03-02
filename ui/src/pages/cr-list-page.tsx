@@ -1,14 +1,17 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
+import { useQuery } from '@tanstack/react-query'
 import * as yaml from 'js-yaml'
 import { CustomResourceDefinition } from 'kubernetes-types/apiextensions/v1'
 import { get } from 'lodash'
 import { Eye } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { CustomResource, ResourceType } from '@/types/api'
-import { useResource } from '@/lib/api'
+import { fetchResource } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import { useCluster } from '@/hooks/use-cluster'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,7 +26,23 @@ export function CRListPage() {
   const [isYamlDialogOpen, setIsYamlDialogOpen] = useState(false)
   const [yamlContent, setYamlContent] = useState('')
   const { crd } = useParams<{ crd: string }>()
-  const { data: crdData, isLoading: isLoadingCRD } = useResource('crds', crd!)
+  const { currentClusterInfo } = useCluster()
+  const isClusterScopeBlocked = !!currentClusterInfo?.namespaceScoped
+  const { data: crdData, isLoading: isLoadingCRD } = useQuery({
+    queryKey: ['crds', crd],
+    queryFn: () => fetchResource<CustomResourceDefinition>('crds', crd!),
+    enabled: !!crd && !isClusterScopeBlocked,
+  })
+
+  useEffect(() => {
+    if (!isClusterScopeBlocked) return
+    toast.warning(
+      'This cluster is namespace-scoped. Cluster-level resources are disabled.',
+      {
+        id: 'cluster-scope-resource-guard',
+      }
+    )
+  }, [isClusterScopeBlocked])
 
   const columnHelper = createColumnHelper<CustomResource>()
   const handleViewYaml = useCallback((crd: CustomResourceDefinition) => {
@@ -110,6 +129,10 @@ export function CRListPage() {
       field.toLowerCase().includes(query.toLowerCase())
     )
   }, [])
+
+  if (isClusterScopeBlocked) {
+    return <Navigate to="/" replace />
+  }
 
   if (isLoadingCRD) {
     return <div>Loading...</div>

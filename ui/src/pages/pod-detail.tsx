@@ -59,7 +59,7 @@ export function PodDetail(props: { namespace: string; name: string }) {
   const [isResizing, setIsResizing] = useState(false)
 
   const { t } = useTranslation()
-  const { clusters, currentCluster } = useCluster()
+  const { clusters, currentCluster, currentClusterInfo } = useCluster()
 
   const {
     data: pod,
@@ -161,6 +161,7 @@ export function PodDetail(props: { namespace: string; name: string }) {
   )
   const resizeAvailable =
     resizeSupported && (pod?.spec?.containers?.length ?? 0) > 0
+  const disableNodeLink = !!currentClusterInfo?.namespaceScoped
 
   if (isLoading) {
     return (
@@ -283,12 +284,18 @@ export function PodDetail(props: { namespace: string; name: string }) {
                         <p className="text-xs text-muted-foreground">Node</p>
                         <p className="text-sm font-medium truncate">
                           {pod.spec?.nodeName ? (
-                            <Link
-                              to={`/nodes/${pod.spec.nodeName}`}
-                              className="text-blue-600 hover:text-blue-800 hover:underline"
-                            >
-                              {pod.spec.nodeName}
-                            </Link>
+                            disableNodeLink ? (
+                              <span className="text-muted-foreground">
+                                {pod.spec.nodeName}
+                              </span>
+                            ) : (
+                              <Link
+                                to={`/nodes/${pod.spec.nodeName}`}
+                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                {pod.spec.nodeName}
+                              </Link>
+                            )
                           ) : (
                             'Not assigned'
                           )}
