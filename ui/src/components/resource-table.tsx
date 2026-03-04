@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 import { ResourceType } from '@/types/api'
 import { deleteResource, useResources, useResourcesWatch } from '@/lib/api'
 import { useCluster } from '@/hooks/use-cluster'
+import { useAuth } from '@/contexts/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -89,7 +90,9 @@ export function ResourceTable<T>({
   defaultHiddenColumns = [],
 }: ResourceTableProps<T>) {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const { currentCluster, currentClusterInfo } = useCluster()
+  const defaultNamespace = user?.isAdmin() ? '_all' : 'default'
   const fixedNamespace =
     !clusterScope && currentClusterInfo?.namespaceScoped
       ? currentClusterInfo.namespace
@@ -148,7 +151,7 @@ export function ResourceTable<T>({
       : null
     return clusterScope
       ? undefined // No namespace for cluster scope
-      : storedNamespace || 'default' // Default to 'default' if not set
+      : storedNamespace || defaultNamespace
   })
   const requestNamespace = clusterScope
     ? undefined
@@ -241,11 +244,17 @@ export function ResourceTable<T>({
     }
 
     const storedNamespace = localStorage.getItem(selectedNamespaceStorageKey)
-    const targetNamespace = storedNamespace || 'default'
+    const targetNamespace = storedNamespace || defaultNamespace
     if (selectedNamespace !== targetNamespace) {
       setSelectedNamespace(targetNamespace)
     }
-  }, [clusterScope, currentCluster, fixedNamespace, selectedNamespace])
+  }, [
+    clusterScope,
+    currentCluster,
+    defaultNamespace,
+    fixedNamespace,
+    selectedNamespace,
+  ])
 
   // Handle namespace change
   const handleNamespaceChange = useCallback(

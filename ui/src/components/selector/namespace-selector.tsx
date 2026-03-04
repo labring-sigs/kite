@@ -30,9 +30,16 @@ export function NamespaceSelector({
     return nameA.localeCompare(nameB)
   })
 
+  const fallbackNamespace =
+    selectedNamespace && !(showAll && selectedNamespace === '_all')
+      ? selectedNamespace
+      : undefined
+
   const namespaces = sortedNamespaces.length
     ? sortedNamespaces
-    : [{ metadata: { name: selectedNamespace || 'default' } }]
+    : fallbackNamespace
+      ? [{ metadata: { name: fallbackNamespace } }]
+      : []
 
   return (
     <Select
