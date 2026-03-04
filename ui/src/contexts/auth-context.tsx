@@ -1,14 +1,17 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
+  useCallback,
   createContext,
   ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import * as sealosDesktopSDK from 'sealos-desktop-sdk/app'
 
+import { writeCurrentCluster } from '@/lib/current-cluster'
 import { withSubPath } from '@/lib/subpath'
 
 interface User {
@@ -64,6 +67,8 @@ interface SealosSession {
   kubeconfig: string
   user?: SealosSessionUser
 }
+
+const SEALOS_PROVIDER = 'sealos'
 
 const getEnvFlag = (value: string | undefined): boolean | null => {
   if (value === 'true') return true
@@ -125,6 +130,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [providers, setProviders] = useState<string[]>([])
   const queryClient = useQueryClient()
+  const sealosSyncingRef = useRef(false)
 
   const loadProviders = async () => {
     try {
@@ -170,6 +176,65 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const checkAuth = async () => {
     await checkAuthInternal()
   }
+
+  const syncSealosSession = useCallback(
+    async (currentUser: User | null): Promise<boolean> => {
+      if (!shouldTrySealosAutoLogin()) {
+        return false
+      }
+
+      // Respect explicit non-sealos logins; only auto-sync when unauthenticated or already in sealos mode.
+      if (currentUser && currentUser.provider !== SEALOS_PROVIDER) {
+        return false
+      }
+
+      if (sealosSyncingRef.current) {
+        return false
+      }
+
+      sealosSyncingRef.current = true
+      try {
+        const sealosSession = await getSealosSession()
+        if (!sealosSession) {
+          return false
+        }
+
+        const response = await fetch(withSubPath('/api/auth/login/sealos'), {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: sealosSession.token,
+            kubeconfig: sealosSession.kubeconfig,
+            user: sealosSession.user,
+          }),
+        })
+
+        if (!response.ok) {
+          return false
+        }
+
+        const data = await response.json()
+        if (data?.cluster && typeof data.cluster === 'string') {
+          writeCurrentCluster(data.cluster)
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['init-check'] })
+        await queryClient.invalidateQueries({ queryKey: ['clusters'] })
+        await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
+        await checkAuthInternal()
+        return true
+      } catch (error) {
+        console.error('Sealos session sync failed:', error)
+        return false
+      } finally {
+        sealosSyncingRef.current = false
+      }
+    },
+    [queryClient]
+  )
 
   const login = async (provider: string = 'github') => {
     try {
@@ -241,6 +306,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (response.ok) {
         setUser(null)
+        writeCurrentCluster(null)
         window.location.href = withSubPath('/login')
       } else {
         throw new Error('Failed to logout')
@@ -257,47 +323,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         await loadProviders()
         const currentUser = await checkAuthInternal()
-
-        if (!currentUser && shouldTrySealosAutoLogin()) {
-          const sealosSession = await getSealosSession()
-          if (sealosSession) {
-            const response = await fetch(
-              withSubPath('/api/auth/login/sealos'),
-              {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  token: sealosSession.token,
-                  kubeconfig: sealosSession.kubeconfig,
-                  user: sealosSession.user,
-                }),
-              }
-            )
-
-            if (response.ok) {
-              const data = await response.json()
-              if (data?.cluster && typeof data.cluster === 'string') {
-                localStorage.setItem('current-cluster', data.cluster)
-                document.cookie = `x-cluster-name=${data.cluster}; path=/`
-              }
-              await queryClient.invalidateQueries({ queryKey: ['init-check'] })
-              await queryClient.invalidateQueries({ queryKey: ['clusters'] })
-              await queryClient.invalidateQueries({
-                queryKey: ['cluster-list'],
-              })
-              await checkAuthInternal()
-            }
-          }
-        }
+        await syncSealosSession(currentUser)
       } finally {
         setIsLoading(false)
       }
     }
     initAuth()
-  }, [queryClient])
+  }, [syncSealosSession])
+
+  useEffect(() => {
+    if (user && user.provider !== SEALOS_PROVIDER) {
+      return
+    }
+
+    const syncOnFocus = () => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+      void syncSealosSession(user)
+    }
+
+    window.addEventListener('focus', syncOnFocus)
+    document.addEventListener('visibilitychange', syncOnFocus)
+
+    return () => {
+      window.removeEventListener('focus', syncOnFocus)
+      document.removeEventListener('visibilitychange', syncOnFocus)
+    }
+  }, [syncSealosSession, user])
 
   // Set up automatic token refresh
   useEffect(() => {

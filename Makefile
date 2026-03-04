@@ -106,6 +106,31 @@ dev: ## Run in development mode
 	BACKEND_PID=$$!; \
 	echo "Backend PID: $$BACKEND_PID"; \
 	trap 'echo "🛑 Stopping backend server..."; kill $$BACKEND_PID 2>/dev/null; exit' INT TERM; \
+	HEALTH_PATH=$${KITE_BASE:-}; \
+	if [ -n "$$HEALTH_PATH" ]; then \
+		HEALTH_PATH="$${HEALTH_PATH%/}/healthz"; \
+	else \
+		HEALTH_PATH="/healthz"; \
+	fi; \
+	echo "⏳ Waiting for backend to be ready at $$HEALTH_PATH ..."; \
+	i=0; \
+	while [ $$i -lt 120 ]; do \
+		if curl -sf "http://localhost:8080$$HEALTH_PATH" >/dev/null 2>&1; then \
+			echo "✅ Backend is ready"; \
+			break; \
+		fi; \
+		if ! kill -0 $$BACKEND_PID 2>/dev/null; then \
+			echo "❌ Backend exited before becoming ready"; \
+			exit 1; \
+		fi; \
+		i=$$((i+1)); \
+		if [ $$i -eq 120 ]; then \
+			echo "❌ Timed out waiting for backend readiness"; \
+			kill $$BACKEND_PID 2>/dev/null; \
+			exit 1; \
+		fi; \
+		sleep 0.5; \
+	done; \
 	echo "🔄 Starting development server..."; \
 	cd $(UI_DIR) && pnpm run dev; \
 	echo "🛑 Stopping backend server..."; \

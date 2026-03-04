@@ -4,6 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { Cluster } from '@/types/api'
+import {
+  CURRENT_CLUSTER_STORAGE_KEY,
+  CURRENT_CLUSTER_CHANGE_EVENT,
+  readCurrentCluster,
+  writeCurrentCluster,
+} from '@/lib/current-cluster'
 import { withSubPath } from '@/lib/subpath'
 
 const isAsciiClusterName = (value: string) => /^[\x21-\x7E]+$/.test(value)
@@ -31,7 +37,7 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
     `${clusterName}selectedNamespace`
 
   const [currentCluster, setCurrentClusterState] = useState<string | null>(
-    localStorage.getItem('current-cluster')
+    readCurrentCluster()
   )
   const queryClient = useQueryClient()
   const [isSwitching, setIsSwitching] = useState(false)
@@ -87,6 +93,37 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem(scopedNamespaceKey)
   }, [currentClusterInfo])
 
+  useEffect(() => {
+    const syncFromStorage = () => {
+      const clusterName = readCurrentCluster()
+      if (clusterName === currentCluster) {
+        return
+      }
+      setCurrentClusterState(clusterName)
+    }
+
+    const onClusterChange = () => syncFromStorage()
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === CURRENT_CLUSTER_STORAGE_KEY) {
+        syncFromStorage()
+      }
+    }
+
+    window.addEventListener(
+      CURRENT_CLUSTER_CHANGE_EVENT,
+      onClusterChange as EventListener
+    )
+    window.addEventListener('storage', onStorage)
+
+    return () => {
+      window.removeEventListener(
+        CURRENT_CLUSTER_CHANGE_EVENT,
+        onClusterChange as EventListener
+      )
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [currentCluster])
+
   // Set default cluster if none is selected
   useEffect(() => {
     if (clusters.length > 0 && !currentCluster) {
@@ -96,13 +133,11 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
       const fallbackCluster = clusters.find((c) => isAsciiClusterName(c.name))
       if (defaultCluster) {
         setCurrentClusterState(defaultCluster.name)
-        document.cookie = `x-cluster-name=${defaultCluster.name}; path=/`
-        localStorage.setItem('current-cluster', defaultCluster.name)
+        writeCurrentCluster(defaultCluster.name)
       } else if (fallbackCluster) {
         // If no default cluster, use the first one
         setCurrentClusterState(fallbackCluster.name)
-        localStorage.setItem('current-cluster', fallbackCluster.name)
-        document.cookie = `x-cluster-name=${fallbackCluster.name}; path=/`
+        writeCurrentCluster(fallbackCluster.name)
       }
     }
     if (
@@ -113,9 +148,7 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
     ) {
       // If current cluster is not in the list, reset it
       setCurrentClusterState(null)
-      localStorage.removeItem('current-cluster')
-      document.cookie =
-        'x-cluster-name=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+      writeCurrentCluster(null)
     }
   }, [clusters, currentCluster])
 
@@ -128,8 +161,7 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         setIsSwitching(true)
         setCurrentClusterState(clusterName)
-        localStorage.setItem('current-cluster', clusterName)
-        document.cookie = `x-cluster-name=${clusterName}; path=/`
+        writeCurrentCluster(clusterName)
 
         const selectedCluster = clusters.find(
           (cluster) => cluster.name === clusterName
