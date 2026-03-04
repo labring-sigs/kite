@@ -587,17 +587,45 @@ export const useOverview = (options?: { staleTime?: number }) => {
 }
 
 // Resource Usage History API
+const EMPTY_RESOURCE_USAGE_HISTORY: ResourceUsageHistory = {
+  cpu: [],
+  memory: [],
+  networkIn: [],
+  networkOut: [],
+  diskRead: [],
+  diskWrite: [],
+}
+
+const isNoResourceUsageDataError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const message = error.message.toLowerCase()
+  return (
+    message.includes(
+      'metrics-server or kube-state-metrics may not be available or configured correctly'
+    ) || message.includes('no prometheus data points returned')
+  )
+}
+
 export const fetchResourceUsageHistory = (
   duration: string,
   instance?: string
 ): Promise<ResourceUsageHistory> => {
   const endpoint = `/prometheus/resource-usage-history?duration=${duration}`
-  if (instance) {
-    return fetchAPI<ResourceUsageHistory>(
-      `${endpoint}&instance=${encodeURIComponent(instance)}`
-    )
-  }
-  return fetchAPI<ResourceUsageHistory>(endpoint)
+  const request = instance
+    ? fetchAPI<ResourceUsageHistory>(
+        `${endpoint}&instance=${encodeURIComponent(instance)}`
+      )
+    : fetchAPI<ResourceUsageHistory>(endpoint)
+
+  return request.catch((error) => {
+    if (isNoResourceUsageDataError(error)) {
+      return { ...EMPTY_RESOURCE_USAGE_HISTORY }
+    }
+    throw error
+  })
 }
 
 export const useResourceUsageHistory = (
