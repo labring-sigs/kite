@@ -11,6 +11,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import * as sealosDesktopSDK from 'sealos-desktop-sdk/app'
 
+import i18n from '@/i18n'
 import { writeCurrentCluster } from '@/lib/current-cluster'
 import { withSubPath } from '@/lib/subpath'
 
@@ -68,7 +69,10 @@ interface SealosSession {
   user?: SealosSessionUser
 }
 
+type SealosLanguage = 'en' | 'zh'
+
 const SEALOS_PROVIDER = 'sealos'
+const SEALOS_LANGUAGE_CHANGED_EVENT = 'change_i18n'
 
 const getEnvFlag = (value: string | undefined): boolean | null => {
   if (value === 'true') return true
@@ -96,6 +100,27 @@ const normalizeSealosSession = (raw: unknown): SealosSession | null => {
   return { token, kubeconfig, user }
 }
 
+const normalizeSealosLanguage = (raw: unknown): SealosLanguage | null => {
+  let language = ''
+
+  if (typeof raw === 'string') {
+    language = raw
+  } else if (typeof raw === 'object' && raw !== null) {
+    const value = raw as Record<string, unknown>
+    language =
+      (typeof value.lng === 'string' && value.lng) ||
+      (typeof value.lang === 'string' && value.lang) ||
+      (typeof value.language === 'string' && value.language) ||
+      (typeof value.locale === 'string' && value.locale) ||
+      ''
+  }
+
+  const normalized = language.trim().toLowerCase()
+  if (normalized.startsWith('zh')) return 'zh'
+  if (normalized.startsWith('en')) return 'en'
+  return null
+}
+
 const withTimeout = async <T,>(
   promise: Promise<T>,
   timeoutMs: number
@@ -116,6 +141,24 @@ const getSealosSession = async (
     const appClient = sealosDesktopSDK.sealosApp
     const rawSession = await withTimeout(appClient.getSession(), timeoutMs)
     return normalizeSealosSession(rawSession)
+  } catch {
+    return null
+  } finally {
+    if (typeof cleanup === 'function') {
+      cleanup()
+    }
+  }
+}
+
+const getSealosLanguage = async (
+  timeoutMs = 3000
+): Promise<SealosLanguage | null> => {
+  const cleanup = sealosDesktopSDK.createSealosApp()
+  try {
+    // NOTE: Reassign to sidestep the CJS interop quirk where the sealosApp value doesn’t update.
+    const appClient = sealosDesktopSDK.sealosApp
+    const rawLanguage = await withTimeout(appClient.getLanguage(), timeoutMs)
+    return normalizeSealosLanguage(rawLanguage)
   } catch {
     return null
   } finally {
@@ -236,6 +279,75 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [queryClient]
   )
 
+  const syncSealosLanguage = useCallback(async (currentUser: User | null) => {
+    if (!shouldTrySealosAutoLogin()) {
+      return
+    }
+
+    // Respect explicit non-sealos logins; only auto-sync when unauthenticated or already in sealos mode.
+    if (currentUser && currentUser.provider !== SEALOS_PROVIDER) {
+      return
+    }
+
+    try {
+      const sealosLanguage = await getSealosLanguage()
+      if (!sealosLanguage) {
+        return
+      }
+
+      const currentLanguage = (i18n.resolvedLanguage ?? i18n.language)
+        .toLowerCase()
+        .trim()
+      if (currentLanguage.startsWith(sealosLanguage)) {
+        return
+      }
+
+      await i18n.changeLanguage(sealosLanguage)
+    } catch (error) {
+      console.error('Sealos language sync failed:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shouldTrySealosAutoLogin()) {
+      return
+    }
+
+    if (user && user.provider !== SEALOS_PROVIDER) {
+      return
+    }
+
+    const cleanup = sealosDesktopSDK.createSealosApp()
+    const appClient = sealosDesktopSDK.sealosApp
+    const removeLanguageListener = appClient.addAppEventListen(
+      SEALOS_LANGUAGE_CHANGED_EVENT,
+      async (eventData?: unknown) => {
+        const nextLanguage = normalizeSealosLanguage(eventData)
+        if (nextLanguage) {
+          const currentLanguage = (i18n.resolvedLanguage ?? i18n.language)
+            .toLowerCase()
+            .trim()
+          if (!currentLanguage.startsWith(nextLanguage)) {
+            await i18n.changeLanguage(nextLanguage)
+          }
+          return
+        }
+
+        // Fallback to querying current desktop language when event payload shape is unknown.
+        void syncSealosLanguage(user)
+      }
+    )
+
+    return () => {
+      if (typeof removeLanguageListener === 'function') {
+        removeLanguageListener()
+      }
+      if (typeof cleanup === 'function') {
+        cleanup()
+      }
+    }
+  }, [syncSealosLanguage, user])
+
   const login = async (provider: string = 'github') => {
     try {
       const response = await fetch(
@@ -323,13 +435,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         await loadProviders()
         const currentUser = await checkAuthInternal()
-        await syncSealosSession(currentUser)
+        await Promise.all([
+          syncSealosSession(currentUser),
+          syncSealosLanguage(currentUser),
+        ])
       } finally {
         setIsLoading(false)
       }
     }
     initAuth()
-  }, [syncSealosSession])
+  }, [syncSealosLanguage, syncSealosSession])
 
   useEffect(() => {
     if (user && user.provider !== SEALOS_PROVIDER) {
@@ -340,6 +455,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (document.visibilityState === 'hidden') {
         return
       }
+      void syncSealosLanguage(user)
       void syncSealosSession(user)
     }
 
@@ -350,7 +466,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener('focus', syncOnFocus)
       document.removeEventListener('visibilitychange', syncOnFocus)
     }
-  }, [syncSealosSession, user])
+  }, [syncSealosLanguage, syncSealosSession, user])
 
   // Set up automatic token refresh
   useEffect(() => {
