@@ -43,7 +43,7 @@ helm install kite kite/kite -n kite-system -f values.yaml
 如需快速部署，可直接应用官方安装 YAML：
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install-legacy.yaml
 ```
 
 此方法将使用默认配置安装 Kite。如需高级定制，建议使用 Helm Chart。
@@ -126,16 +126,12 @@ spec:
 
   说明：
 
-  - Ingress 配置：确保 Ingress 的 `paths` 与子路径一致，并使用合适的 `pathType`（例如 `Prefix`）。示例：
+  - Ingress 配置：当前 chart 中 ingress 的 host/path 在模板中固定为 `https://kite.<cloudDomain>/`，通常只需要设置 `cloudDomain`。示例：
 
   ```yaml
   ingress:
     enabled: true
-    hosts:
-      - host: kite.example.com
-        paths:
-          - path: /kite
-            pathType: Prefix
+  cloudDomain: example.com
   ```
 
   - OAuth / 重定向：如果启用了 OAuth 或其他外部重定向，请在 OAuth 提供方中将重定向 URL 更新为包含子路径，例如 `https://kite.example.com/kite/oauth/callback`。
@@ -165,7 +161,7 @@ helm uninstall kite -n kite-system
 ### YAML 卸载
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install.yaml
+kubectl delete -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install-legacy.yaml
 ```
 
 ## 后续步骤

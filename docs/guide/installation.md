@@ -42,7 +42,7 @@ helm install kite kite/kite -n kite-system -f values.yaml
 For quick deployment, you can directly apply the official installation YAML:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install-legacy.yaml
 ```
 
 This method will install Kite with default configuration. For advanced customization, it's recommended to use the Helm Chart.
@@ -125,16 +125,12 @@ helm install kite kite/kite -n kite-system --create-namespace --set basePath="/k
 
 Important notes:
 
-- Ingress configuration: make sure your Ingress `paths` match the subpath and use a matching pathType (e.g., `Prefix`). Example:
+- Ingress configuration: in this chart, ingress host/path are fixed in templates (`https://kite.<cloudDomain>/`). You usually only need to set `cloudDomain`. Example:
 
 ```yaml
 ingress:
   enabled: true
-  hosts:
-    - host: kite.example.com
-      paths:
-        - path: /kite
-          pathType: Prefix
+cloudDomain: example.com
 ```
 
 - OAuth / redirects: if you enable OAuth (or any external redirect flows), update the redirect URLs in your OAuth provider to include the base path, e.g. `https://kite.example.com/kite/oauth/callback`.
@@ -175,7 +171,7 @@ helm uninstall kite -n kite-system
 ### YAML Uninstall
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install.yaml
+kubectl delete -f https://raw.githubusercontent.com/zxh326/kite/main/deploy/install-legacy.yaml
 ```
 
 ## Next Steps

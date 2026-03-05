@@ -96,7 +96,7 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 2.  **使用默认值安装**
 
     ```bash
-    helm install kite kite/kite -n kube-system
+    helm install kite kite/kite -n kite-system
     ```
 
 #### 使用 kubectl
@@ -104,15 +104,15 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 1.  **应用部署清单**
 
     ```bash
-    kubectl apply -f deploy/install.yaml
+    kubectl apply -f deploy/install-legacy.yaml
     # 或在线安装
-    kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/refs/heads/main/deploy/install.yaml
+    kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/refs/heads/main/deploy/install-legacy.yaml
     ```
 
 2.  **通过端口转发访问**
 
     ```bash
-    kubectl port-forward -n kube-system svc/kite 8080:8080
+    kubectl port-forward -n kite-system svc/kite 8080:8080
     ```
 
 ### 从源码构建

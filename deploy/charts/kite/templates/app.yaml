@@ -1,0 +1,22 @@
+{{- if .Values.app.enabled }}
+{{- $cloudDomain := required "cloudDomain is required when app.enabled=true" .Values.cloudDomain -}}
+{{- $host := printf "kite.%s" $cloudDomain -}}
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: kite
+  namespace: app-system
+spec:
+  type: iframe
+  name: kite
+  displayType: normal
+  icon: https://{{ $host }}/logo.svg
+  data:
+    desc: "Kite Dashboard"
+    url: {{ printf "https://%s" $host | quote }}
+  i18n:
+    zh:
+      name: Kite
+    zh-Hans:
+      name: Kite
+{{- end }}

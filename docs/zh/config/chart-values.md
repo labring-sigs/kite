@@ -7,9 +7,9 @@
 | 参数               | 描述                                               | 默认值                |
 | ------------------ | -------------------------------------------------- | --------------------- |
 | `replicaCount`     | 副本数量                                           | `1`                   |
-| `image.repository` | 容器镜像仓库                                       | `ghcr.io/zxh326/kite` |
+| `image.repository` | 容器镜像仓库                                       | `crpi-7jr40k6elhldekqp.cn-hangzhou.personal.cr.aliyuncs.com/mlhiter/kite` |
 | `image.pullPolicy` | 镜像拉取策略                                       | `IfNotPresent`        |
-| `image.tag`        | 镜像标签。如果设置，将覆盖 chart 的 `appVersion`。 | `""`                  |
+| `image.tag`        | 镜像标签。如果设置，将覆盖 chart 的 `appVersion`。 | `"1.0.8"`             |
 | `imagePullSecrets` | 私有镜像仓库的拉取密钥                             | `[]`                  |
 | `nameOverride`     | 覆盖 chart 名称                                    | `""`                  |
 | `fullnameOverride` | 覆盖完整名称                                       | `""`                  |
@@ -24,12 +24,14 @@
 | `jwtSecret`            | 用于签名 JWT 令牌的密钥。生产环境请修改此值。              | `"kite-default-jwt-secret-key-change-in-production"` |
 | `encryptKey`           | 用于加密敏感数据的密钥。生产环境请修改此值。               | `"kite-default-encryption-key-change-in-production"` |
 | `host`                 | 应用程序的主机名                                           | `""`                                                 |
+| `cloudDomain`          | Sealos 域名，用于渲染 ingress/app 主机名                   | `"127.0.0.1.nip.io"`                                |
+| `sealos.jwtSecret`     | 注入环境变量 `SEALOS_JWT_SECRET` 的值                      | `""`                                                 |
 
 ## 数据库配置
 
 | 参数      | 描述                                                             | 默认值   |
 | --------- | ---------------------------------------------------------------- | -------- |
-| `db.type` | 数据库类型：`sqlite`、`postgres`、`mysql`                        | `sqlite` |
+| `db.type` | 数据库类型：`sqlite`、`postgres`、`mysql`                        | `postgres` |
 | `db.dsn`  | MySQL/Postgres 的完整 DSN 字符串。当类型为 mysql/postgres 时必需 | `""`     |
 
 ### SQLite 配置
@@ -52,6 +54,18 @@
 | 参数        | 描述               | 默认值 |
 | ----------- | ------------------ | ------ |
 | `extraEnvs` | 额外的环境变量列表 | `[]`   |
+
+## Sealos App 配置
+
+| 参数          | 描述                                  | 默认值 |
+| ------------- | ------------------------------------- | ------ |
+| `app.enabled` | 是否创建 `app.sealos.io/v1 App`      | `false` |
+
+App 元数据在模板中固定：
+- namespace: `app-system`
+- name: `kite`
+- type/displayType: `iframe` / `normal`
+- icon/url: `https://kite.<cloudDomain>/logo.svg` 和 `https://kite.<cloudDomain>`
 
 ## 服务账户配置
 
@@ -101,21 +115,23 @@ rbac:
 
 | 参数                  | 描述             | 默认值     |
 | --------------------- | ---------------- | ---------- |
-| `ingress.enabled`     | 是否启用 Ingress | `false`    |
-| `ingress.className`   | Ingress 类名     | `"nginx"`  |
-| `ingress.annotations` | Ingress 注解     | `{}`       |
-| `ingress.hosts`       | Ingress 主机配置 | 见下方示例 |
-| `ingress.tls`         | TLS 配置         | `[]`       |
+| `ingress.enabled`     | 是否启用 Ingress | `true`     |
 
-### Ingress 主机配置示例
+Ingress 行为在模板中固定：
+- host: `kite.<cloudDomain>`
+- className: `nginx`
+- path/pathType: `/` / `Prefix`
+- TLS：默认开启，secret 名称 `wildcard-cert`
+- annotations：
+  - `nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'`
+  - `nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'`
+
+### Ingress 配置示例
 
 ```yaml
 ingress:
-  hosts:
-    - host: kite.zzde.me
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
+  enabled: true
+cloudDomain: 192.168.10.70.nip.io
 ```
 
 ## 资源限制

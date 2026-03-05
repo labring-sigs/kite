@@ -7,9 +7,9 @@ This document describes all available configuration options for the Kite Helm Ch
 | Parameter          | Description                                                | Default               |
 | ------------------ | ---------------------------------------------------------- | --------------------- |
 | `replicaCount`     | Number of replicas                                         | `1`                   |
-| `image.repository` | Container image repository                                 | `ghcr.io/zxh326/kite` |
+| `image.repository` | Container image repository                                 | `crpi-7jr40k6elhldekqp.cn-hangzhou.personal.cr.aliyuncs.com/mlhiter/kite` |
 | `image.pullPolicy` | Image pull policy                                          | `IfNotPresent`        |
-| `image.tag`        | Image tag. If set, will override the chart's `appVersion`. | `""`                  |
+| `image.tag`        | Image tag. If set, will override the chart's `appVersion`. | `"1.0.8"`             |
 | `imagePullSecrets` | Image pull secrets for private repositories                | `[]`                  |
 | `nameOverride`     | Override chart name                                        | `""`                  |
 | `fullnameOverride` | Override full name                                         | `""`                  |
@@ -24,12 +24,14 @@ This document describes all available configuration options for the Kite Helm Ch
 | `jwtSecret`            | Secret key used for signing JWT tokens. Change this in production.                       | `"kite-default-jwt-secret-key-change-in-production"` |
 | `encryptKey`           | Secret key used for encrypting sensitive data. Change this in production.                | `"kite-default-encryption-key-change-in-production"` |
 | `host`                 | Hostname for the application                                                             | `""`                                                 |
+| `cloudDomain`          | Sealos cloud domain. Used to render ingress/app host                                     | `"127.0.0.1.nip.io"`                                |
+| `sealos.jwtSecret`     | Value injected to env `SEALOS_JWT_SECRET`                                                | `""`                                                 |
 
 ## Database Configuration
 
 | Parameter | Description                                                              | Default  |
 | --------- | ------------------------------------------------------------------------ | -------- |
-| `db.type` | Database type: `sqlite`, `postgres`, `mysql`                             | `sqlite` |
+| `db.type` | Database type: `sqlite`, `postgres`, `mysql`                             | `postgres` |
 | `db.dsn`  | Full DSN string for MySQL/Postgres. Required when type is mysql/postgres | `""`     |
 
 ### SQLite Configuration
@@ -52,6 +54,18 @@ This document describes all available configuration options for the Kite Helm Ch
 | Parameter   | Description                              | Default |
 | ----------- | ---------------------------------------- | ------- |
 | `extraEnvs` | List of additional environment variables | `[]`    |
+
+## Sealos App Configuration
+
+| Parameter     | Description                                    | Default |
+| ------------- | ---------------------------------------------- | ------- |
+| `app.enabled` | Whether to create `app.sealos.io/v1 App`      | `false` |
+
+App metadata is intentionally fixed in templates:
+- namespace: `app-system`
+- name: `kite`
+- type/displayType: `iframe` / `normal`
+- icon/url: `https://kite.<cloudDomain>/logo.svg` and `https://kite.<cloudDomain>`
 
 ## Service Account Configuration
 
@@ -101,21 +115,23 @@ rbac:
 
 | Parameter             | Description                | Default           |
 | --------------------- | -------------------------- | ----------------- |
-| `ingress.enabled`     | Whether to enable Ingress  | `false`           |
-| `ingress.className`   | Ingress class name         | `"nginx"`         |
-| `ingress.annotations` | Ingress annotations        | `{}`              |
-| `ingress.hosts`       | Ingress host configuration | See example below |
-| `ingress.tls`         | TLS configuration          | `[]`              |
+| `ingress.enabled`     | Whether to enable Ingress  | `true`            |
 
-### Ingress Host Configuration Example
+Ingress behavior is fixed in templates:
+- host: `kite.<cloudDomain>`
+- className: `nginx`
+- path/pathType: `/` / `Prefix`
+- TLS: enabled, secret name `wildcard-cert`
+- annotations:
+  - `nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'`
+  - `nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'`
+
+### Ingress Example
 
 ```yaml
 ingress:
-  hosts:
-    - host: kite.zzde.me
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
+  enabled: true
+cloudDomain: 192.168.10.70.nip.io
 ```
 
 ## Resource Limits

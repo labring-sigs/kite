@@ -99,6 +99,10 @@ spec:
             - name: DB_DSN
               value: {{ (printf "host=$(KITE_PG_HOST) user=$(KITE_PG_USER) password=$(KITE_PG_PASSWORD) dbname=%s port=$(KITE_PG_PORT) sslmode=%s %s" (default "postgres" $postgres.database) (default "disable" $postgres.sslMode) (default "" $postgres.extraOptions)) | trim | quote }}
             {{- end }}
+            {{- if .Values.sealos.jwtSecret }}
+            - name: SEALOS_JWT_SECRET
+              value: {{ .Values.sealos.jwtSecret | quote }}
+            {{- end }}
             {{- if .Values.basePath }}
             - name: KITE_BASE
               value: {{ .Values.basePath }}

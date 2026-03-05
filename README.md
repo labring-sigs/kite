@@ -97,7 +97,7 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 2. **Install with default values**
 
    ```bash
-   helm install kite kite/kite -n kube-system
+   helm install kite kite/kite -n kite-system
    ```
 
 #### Using kubectl
@@ -105,15 +105,15 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 1. **Apply deployment manifests**
 
    ```bash
-   kubectl apply -f deploy/install.yaml
+   kubectl apply -f deploy/install-legacy.yaml
    # or install it online
-   kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/refs/heads/main/deploy/install.yaml
+   kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/refs/heads/main/deploy/install-legacy.yaml
    ```
 
 2. **Access via port-forward**
 
    ```bash
-   kubectl port-forward -n kube-system svc/kite 8080:8080
+   kubectl port-forward -n kite-system svc/kite 8080:8080
    ```
 
 ### Build from Source
