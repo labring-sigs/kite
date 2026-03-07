@@ -4,38 +4,66 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - main
 
 env:
-  IMAGE_NAME: kite
   GO_VERSION: '1.25'
   NODE_VERSION: '24'
   GHCR_REPO: ghcr.io/${{ github.repository }}
+  GHCR_RUNTIME_IMAGE: ghcr.io/${{ github.repository }}/kite
+  GHCR_SEALOS_IMAGE: ghcr.io/${{ github.repository }}/kite-cluster
 
 jobs:
-  push:
+  meta:
+    name: Release Metadata
     runs-on: ubuntu-latest
     permissions:
-      packages: write
-      contents: write
+      contents: read
     outputs:
-      tag_name: ${{ steps.check_version.outputs.tag_name }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      is_release: ${{ steps.meta.outputs.is_release }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      tag_with_sha: ${{ steps.meta.outputs.tag_with_sha }}
+    steps:
+      - name: Compute tags
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            IS_RELEASE="true"
+          else
+            TAG_NAME="main"
+            IS_RELEASE="false"
+          fi
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          TAG_WITH_SHA="${TAG_NAME}-${SHORT_SHA}"
+          echo "tag_name=${TAG_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "is_release=${IS_RELEASE}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "tag_with_sha=${TAG_WITH_SHA}" >> "${GITHUB_OUTPUT}"
+
+  runtime-build:
+    name: Build Runtime Image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: meta
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - uses: pnpm/action-setup@v4
         with:
@@ -58,87 +86,11 @@ jobs:
       - name: Install deps
         run: make deps
 
-      - name: Check version
-        id: check_version
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "tag_name=$TAG_NAME" >> "${GITHUB_OUTPUT}"
-
-      - name: Build
-        run: make cross-compile
-
-      - name: Package binaries
-        run: make package-binaries
-
-      - name: Prepare image tags
-        id: image_tags
-        run: |
-          TAG_NAME="${{ steps.check_version.outputs.tag_name }}"
-          {
-            echo "tags<<EOF"
-            echo "${GHCR_REPO}:${TAG_NAME}"
-            echo "${GHCR_REPO}:latest"
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.binary
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.image_tags.outputs.tags }}
-          labels: runnumber=${{ github.run_id }}
-
-      - name: Package Helm chart
-        run: helm package deploy/charts/kite/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.check_version.outputs.tag_name }}
-          name: ${{ steps.check_version.outputs.tag_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            bin/kite-*-${{ steps.check_version.outputs.tag_name }}.tar.gz
-            kite-*.tgz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-sealos-images:
-    name: Push Sealos Images
-    runs-on: ubuntu-latest
-    needs: push
-    permissions:
-      packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install cache images tools
-        run: sudo bash ./.github/scripts/install.sh
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Build binaries
+        run: make build-arch ARCH=${{ matrix.arch }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Cache images for sealos
-        working-directory: deploy
-        run: |
-          set -euo pipefail
-          TAG_NAME="${{ needs.push.outputs.tag_name }}"
-          sudo sealos login -u "${{ github.repository_owner }}" -p "${{ secrets.GITHUB_TOKEN }}" ghcr.io
-          sed -i "/^image:/,/^[^[:space:]]/ s#^\([[:space:]]*repository:[[:space:]]*\).*#\1${GHCR_REPO}#" charts/kite/values.yaml
-          sed -i "/^image:/,/^[^[:space:]]/ s#^\([[:space:]]*tag:[[:space:]]*\).*#\1${TAG_NAME}#" charts/kite/values.yaml
-          sudo sealos registry save --registry-dir=registry_amd64 --arch amd64 .
-          sudo sealos registry save --registry-dir=registry_arm64 --arch arm64 .
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -147,14 +99,194 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push sealos image
+      - name: Build and push runtime image (arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.binary
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          tags: |
+            ${{ env.GHCR_RUNTIME_IMAGE }}:${{ needs.meta.outputs.tag_name }}-${{ matrix.arch }}
+            ${{ env.GHCR_RUNTIME_IMAGE }}:${{ needs.meta.outputs.tag_with_sha }}-${{ matrix.arch }}
+          labels: runnumber=${{ github.run_id }}
+
+  runtime-manifest:
+    name: Publish Runtime Manifests
+    runs-on: ubuntu-latest
+    needs: [meta, runtime-build]
+    permissions:
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create runtime multi-arch manifests
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          TAG_WITH_SHA="${{ needs.meta.outputs.tag_with_sha }}"
+          docker buildx imagetools create \
+            -t "${GHCR_RUNTIME_IMAGE}:${TAG_NAME}" \
+            "${GHCR_RUNTIME_IMAGE}:${TAG_NAME}-amd64" \
+            "${GHCR_RUNTIME_IMAGE}:${TAG_NAME}-arm64"
+          docker buildx imagetools create \
+            -t "${GHCR_RUNTIME_IMAGE}:${TAG_WITH_SHA}" \
+            "${GHCR_RUNTIME_IMAGE}:${TAG_WITH_SHA}-amd64" \
+            "${GHCR_RUNTIME_IMAGE}:${TAG_WITH_SHA}-arm64"
+
+  sealos-build:
+    name: Build Sealos Image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: [meta, runtime-manifest]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cache images tools
+        run: sudo bash ./.github/scripts/install.sh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache images for sealos
+        working-directory: deploy
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          sudo sealos login -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}" ghcr.io
+          sed -i "/^image:/,/^[^[:space:]]/ s#^\([[:space:]]*repository:[[:space:]]*\).*#\1${GHCR_RUNTIME_IMAGE}#" charts/kite/values.yaml
+          sed -i "/^image:/,/^[^[:space:]]/ s#^\([[:space:]]*tag:[[:space:]]*\).*#\1${TAG_NAME}#" charts/kite/values.yaml
+          sudo sealos registry save --registry-dir=registry_${{ matrix.arch }} --arch ${{ matrix.arch }} .
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push sealos image (arch)
         uses: docker/build-push-action@v6
         with:
           context: ./deploy
           file: ./deploy/Kubefile
-          labels: runnumber=${{ github.run_id }}
-          platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
           tags: |
-            ${{ env.GHCR_REPO }}-cluster:${{ needs.push.outputs.tag_name }}
-            ${{ env.GHCR_REPO }}-cluster:latest
+            ${{ env.GHCR_SEALOS_IMAGE }}:${{ needs.meta.outputs.tag_name }}-${{ matrix.arch }}
+            ${{ env.GHCR_SEALOS_IMAGE }}:${{ needs.meta.outputs.tag_with_sha }}-${{ matrix.arch }}
+          labels: runnumber=${{ github.run_id }}
+
+      - name: Save sealos image package
+        if: ${{ needs.meta.outputs.is_release == 'true' }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          docker pull "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-${{ matrix.arch }}"
+          mkdir -p release-assets
+          docker save "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-${{ matrix.arch }}" | gzip > "release-assets/kite-cluster-${TAG_NAME}-${{ matrix.arch }}.tar.gz"
+
+      - name: Upload sealos image package
+        if: ${{ needs.meta.outputs.is_release == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sealos-image-${{ needs.meta.outputs.tag_name }}-${{ matrix.arch }}
+          path: release-assets/kite-cluster-${{ needs.meta.outputs.tag_name }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  sealos-manifest:
+    name: Publish Sealos Manifests
+    runs-on: ubuntu-latest
+    needs: [meta, sealos-build]
+    permissions:
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          TAG_WITH_SHA="${{ needs.meta.outputs.tag_with_sha }}"
+          docker buildx imagetools create \
+            -t "${GHCR_SEALOS_IMAGE}:${TAG_NAME}" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-amd64" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-arm64"
+          docker buildx imagetools create \
+            -t "${GHCR_SEALOS_IMAGE}:${TAG_WITH_SHA}" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_WITH_SHA}-amd64" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_WITH_SHA}-arm64"
+
+      - name: Update latest tag
+        if: ${{ needs.meta.outputs.is_release == 'true' }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ needs.meta.outputs.tag_name }}"
+          docker buildx imagetools create \
+            -t "${GHCR_SEALOS_IMAGE}:latest" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-amd64" \
+            "${GHCR_SEALOS_IMAGE}:${TAG_NAME}-arm64"
+
+  release-assets:
+    name: Publish Release Assets
+    runs-on: ubuntu-latest
+    needs: [meta, sealos-build]
+    if: ${{ needs.meta.outputs.is_release == 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download sealos packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: sealos-image-${{ needs.meta.outputs.tag_name }}-*
+          merge-multiple: true
+
+      - name: Create Release with sealos packages
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag_name }}
+          name: ${{ needs.meta.outputs.tag_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-assets/**/kite-cluster-${{ needs.meta.outputs.tag_name }}-amd64.tar.gz
+            release-assets/**/kite-cluster-${{ needs.meta.outputs.tag_name }}-arm64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

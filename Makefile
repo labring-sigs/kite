@@ -65,6 +65,11 @@ cross-compile: frontend ## Cross-compile for multiple architectures
 	# GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 .
 	# GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 .
 
+build-arch: frontend ## Build linux binary for one architecture (ARCH=amd64/arm64)
+	@echo "🔄 Building for architecture: $(ARCH)"
+	mkdir -p bin
+	GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0 go build -trimpath $(LDFLAGS) -o bin/$(BINARY_NAME)-$(ARCH) .
+
 package-release:
 	@echo "🔄 Packaging..."
 	tar -czvf bin/$(BINARY_NAME)-$(shell git describe --tags --match 'v*' | grep -oE 'v[0-9]+\.[0-9][0-9]*(\.[0-9]+)?').tar.gz bin/*
