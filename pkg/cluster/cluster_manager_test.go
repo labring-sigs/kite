@@ -38,7 +38,7 @@ func Test_applyNamespaceScope(t *testing.T) {
 		cs.applyNamespaceScope("ns-admin")
 
 		assert.False(t, cs.NamespaceScoped)
-		assert.Equal(t, "", cs.Namespace)
+		assert.Equal(t, "ns-admin", cs.Namespace)
 	})
 }
 

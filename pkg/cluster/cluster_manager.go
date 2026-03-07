@@ -88,6 +88,8 @@ func (cs *ClientSet) applyNamespaceScope(contextNamespace string) {
 	if contextNamespace == "" {
 		return
 	}
+	// Keep context namespace as preferred namespace even when scope lock is exempted.
+	cs.Namespace = contextNamespace
 	if common.IsNamespaceScopeExempt(contextNamespace) {
 		klog.Infof("Cluster %s context namespace %s is exempt from namespace scope lock", cs.Name, contextNamespace)
 		return
@@ -96,7 +98,6 @@ func (cs *ClientSet) applyNamespaceScope(contextNamespace string) {
 	// Honor kubeconfig current-context namespace directly:
 	// when context namespace is set, Kite keeps this cluster namespace-scoped.
 	cs.NamespaceScoped = true
-	cs.Namespace = contextNamespace
 	klog.Infof("Cluster %s namespace locked by kubeconfig context: %s", cs.Name, cs.Namespace)
 
 	if cs.K8sClient == nil || cs.K8sClient.ClientSet == nil {
