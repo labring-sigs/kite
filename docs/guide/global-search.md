@@ -26,7 +26,7 @@ This will only search for Pods whose names start with `nginx`.
 
 More supported resource types and their abbreviations can be found in the code:
 
-https://github.com/zxh326/kite/blob/b16a4701994e32e5251ee21707f940aa312a449d/pkg/utils/search.go#L12-L35
+https://github.com/labring-sigs/kite/blob/b16a4701994e32e5251ee21707f940aa312a449d/pkg/utils/search.go#L12-L35
 
 ## Limitations
 

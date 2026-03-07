@@ -8,7 +8,7 @@ If you would like to help improve the product, you can set the environment varia
 
 Kite will use umami to collect minimal anonymous usage data.
 
-The source code can be found [here](https://github.com/zxh326/kite/blob/main/pkg/utils/utils.go#L10-L16).
+The source code can be found [here](https://github.com/labring-sigs/kite/blob/main/pkg/utils/utils.go#L10-L16).
 
 ## Permission Issues
 
@@ -52,7 +52,7 @@ These options enable Write-Ahead Logging (WAL) mode and increase the busy timeou
 
 **Recommended for Production**: For production deployments requiring persistent storage, use MySQL or PostgreSQL instead of SQLite. These databases are better suited for containerized environments and persistent storage scenarios.
 
-For more details, see [Issue #204](https://github.com/zxh326/kite/issues/204).
+For more details, see [Issue #204](https://github.com/labring-sigs/kite/issues/204).
 
 ## How to Change Font
 
@@ -82,7 +82,7 @@ body {
 
 We welcome contributions! You can:
 
-- Report bugs and feature requests on [GitHub Issues](https://github.com/zxh326/kite/issues)
+- Report bugs and feature requests on [GitHub Issues](https://github.com/labring-sigs/kite/issues)
 - Submit pull requests
 - Improve documentation
 - Share feedback and use cases
@@ -91,9 +91,9 @@ We welcome contributions! You can:
 
 You can get support through:
 
-- [GitHub Issues](https://github.com/zxh326/kite/issues) for bug reports and feature requests
+- [GitHub Issues](https://github.com/labring-sigs/kite/issues) for bug reports and feature requests
 - [Slack Community](https://join.slack.com/t/kite-dashboard/shared_invite/zt-3amy6f23n-~QZYoricIOAYtgLs_JagEw) for questions and community support
 
 ---
 
-**Didn't find what you're looking for?** Feel free to [open an issue](https://github.com/zxh326/kite/issues/new) on GitHub or start a [discussion](https://github.com/zxh326/kite/discussions).
+**Didn't find what you're looking for?** Feel free to [open an issue](https://github.com/labring-sigs/kite/issues/new) on GitHub or start a [discussion](https://github.com/labring-sigs/kite/discussions).

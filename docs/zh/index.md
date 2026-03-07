@@ -15,7 +15,7 @@ hero:
       link: /zh/guide/
     - theme: alt
       text: GitHub 查看
-      link: https://github.com/zxh326/kite
+      link: https://github.com/labring-sigs/kite
     - theme: alt
       text: 查看演示
       link: https://kite-demo.zzde.me

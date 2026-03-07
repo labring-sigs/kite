@@ -122,7 +122,7 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 1.  **克隆仓库**
 
     ```bash
-    git clone https://github.com/zxh326/kite.git
+    git clone https://github.com/labring-sigs/kite.git
     cd kite
     ```
 

@@ -15,7 +15,7 @@ hero:
       link: /guide/
     - theme: alt
       text: View on GitHub
-      link: https://github.com/zxh326/kite
+      link: https://github.com/labring-sigs/kite
     - theme: alt
       text: View Demo
       link: https://kite-demo.zzde.me

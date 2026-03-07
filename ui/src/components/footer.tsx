@@ -18,7 +18,7 @@ export function Footer() {
               {t('login.documentation')}
             </a>
             <a
-              href="https://github.com/zxh326/kite"
+              href="https://github.com/labring-sigs/kite"
               target="_blank"
               className="hover:text-gray-700 transition-colors"
             >

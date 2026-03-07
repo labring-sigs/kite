@@ -26,7 +26,7 @@ pod nginx
 
 更多支持的资源类型和缩写，您可通过代码找到
 
-https://github.com/zxh326/kite/blob/b16a4701994e32e5251ee21707f940aa312a449d/pkg/utils/search.go#L12-L35
+https://github.com/labring-sigs/kite/blob/b16a4701994e32e5251ee21707f940aa312a449d/pkg/utils/search.go#L12-L35
 
 ## 限制
 

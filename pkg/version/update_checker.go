@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	githubLatestReleaseAPI = "https://api.github.com/repos/zxh326/kite/releases/latest"
+	githubLatestReleaseAPI = "https://api.github.com/repos/labring-sigs/kite/releases/latest"
 	versionCheckTimeout    = 3 * time.Second
 	versionCacheTTL        = time.Hour
 )
