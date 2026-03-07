@@ -91,6 +91,12 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
       return
     }
     localStorage.removeItem(scopedNamespaceKey)
+    if (currentClusterInfo.namespace) {
+      const selectedNamespace = localStorage.getItem(selectedNamespaceKey)
+      if (!selectedNamespace) {
+        localStorage.setItem(selectedNamespaceKey, currentClusterInfo.namespace)
+      }
+    }
   }, [currentClusterInfo])
 
   useEffect(() => {

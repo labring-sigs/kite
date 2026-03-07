@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react'
 import * as React from 'react'
@@ -278,24 +279,36 @@ export const SidebarConfigProvider: React.FC<SidebarConfigProviderProps> = ({
   const [config, setConfig] = useState<SidebarConfig | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [hasUpdate, setHasUpdate] = useState(false)
+  const hasLoadedConfigRef = useRef(false)
+  const lastLoadedPreferenceRef = useRef<string | null>(null)
   const { user } = useAuth()
+  const sidebarPreference = user?.sidebar_preference || ''
   const canCreateCustomCRDGroupPermission =
     user?.capabilities?.canCreateCustomCRDGroup ?? user?.isAdmin() ?? false
 
-  const loadConfig = useCallback(async () => {
-    if (user && user.sidebar_preference && user.sidebar_preference != '') {
-      const userConfig = JSON.parse(user.sidebar_preference)
-      const sanitizedConfig = sanitizeSidebarConfig(userConfig)
-      setConfig(sanitizedConfig)
-
-      const currentVersion = userConfig.version || 0
-      if (currentVersion < CURRENT_CONFIG_VERSION) {
-        setHasUpdate(true)
-      }
+  const loadConfig = useCallback(() => {
+    const normalizedPreference = sidebarPreference.trim()
+    if (lastLoadedPreferenceRef.current === normalizedPreference) {
       return
     }
+    lastLoadedPreferenceRef.current = normalizedPreference
+
+    if (normalizedPreference) {
+      try {
+        const userConfig = JSON.parse(normalizedPreference)
+        const sanitizedConfig = sanitizeSidebarConfig(userConfig)
+        setConfig(sanitizedConfig)
+
+        const currentVersion = userConfig.version || 0
+        setHasUpdate(currentVersion < CURRENT_CONFIG_VERSION)
+        return
+      } catch (error) {
+        console.error('Failed to parse sidebar preference:', error)
+      }
+    }
+    setHasUpdate(false)
     setConfig(defaultConfigs())
-  }, [user])
+  }, [sidebarPreference])
 
   const saveConfig = useCallback(
     async (newConfig: SidebarConfig) => {
@@ -560,9 +573,12 @@ export const SidebarConfigProvider: React.FC<SidebarConfigProviderProps> = ({
   }, [])
 
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true)
-      await loadConfig()
+    const loadData = () => {
+      if (!hasLoadedConfigRef.current) {
+        setIsLoading(true)
+      }
+      loadConfig()
+      hasLoadedConfigRef.current = true
       setIsLoading(false)
     }
     loadData()

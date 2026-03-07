@@ -97,8 +97,6 @@ export function ResourceTable<T>({
     !clusterScope && currentClusterInfo?.namespaceScoped
       ? currentClusterInfo.namespace
       : undefined
-  const preferredNamespace =
-    !clusterScope && !fixedNamespace ? currentClusterInfo?.namespace : undefined
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
     const currentCluster = localStorage.getItem('current-cluster')
@@ -153,7 +151,7 @@ export function ResourceTable<T>({
       : null
     return clusterScope
       ? undefined // No namespace for cluster scope
-      : storedNamespace || preferredNamespace || defaultNamespace
+      : storedNamespace || defaultNamespace
   })
   const requestNamespace = clusterScope
     ? undefined
@@ -246,8 +244,7 @@ export function ResourceTable<T>({
     }
 
     const storedNamespace = localStorage.getItem(selectedNamespaceStorageKey)
-    const targetNamespace =
-      storedNamespace || preferredNamespace || defaultNamespace
+    const targetNamespace = storedNamespace || defaultNamespace
     if (selectedNamespace !== targetNamespace) {
       setSelectedNamespace(targetNamespace)
     }
@@ -256,7 +253,6 @@ export function ResourceTable<T>({
     currentCluster,
     defaultNamespace,
     fixedNamespace,
-    preferredNamespace,
     selectedNamespace,
   ])
 
