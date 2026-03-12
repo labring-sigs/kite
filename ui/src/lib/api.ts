@@ -638,7 +638,18 @@ export const useResourceUsageHistory = (
     enabled: options?.enabled,
     staleTime: options?.staleTime || 10000, // 10 seconds cache
     refetchInterval: 30000, // Auto refresh every 30 seconds for historical data
-    retry: 0,
+    retry: (failureCount, error) => {
+      if (failureCount >= 2) return false
+      if (!(error instanceof Error)) return false
+      const message = error.message.toLowerCase()
+      return (
+        message.includes('403') ||
+        message.includes('failed to fetch') ||
+        message.includes('networkerror') ||
+        message.includes('timeout')
+      )
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** (attempt - 1), 5000),
     placeholderData: (prevData) => prevData, // Keep previous data while loading new data
   })
 }

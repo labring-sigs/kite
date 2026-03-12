@@ -96,6 +96,7 @@ func (h *PromHandler) GetResourceUsageHistory(c *gin.Context) {
 	if err != nil {
 		resourceUsageHistory, err = cs.PromClient.GetResourceUsageHistory(ctx, instance, duration, "node", options)
 		if err != nil {
+			klog.Warningf("resource usage history query failed: cluster=%s duration=%s instance=%s namespace=%s err=%v", cs.Name, duration, instance, options.Namespace, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get resource usage history: %v", err)})
 			return
 		}

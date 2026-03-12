@@ -31,6 +31,10 @@ export function Overview() {
   } = useResourceUsageHistory(timeRange, {
     enabled: overview?.prometheusEnabled ?? false,
   })
+  const resourceUsageError =
+    resourceUsage && resourceUsage.cpu.length + resourceUsage.memory.length > 0
+      ? null
+      : errorResourceUsage
 
   if (error) {
     return (
@@ -70,14 +74,14 @@ export function Overview() {
             cpu={resourceUsage?.cpu || []}
             memory={resourceUsage?.memory || []}
             isLoading={isLoadingResourceUsage}
-            error={errorResourceUsage}
+            error={resourceUsageError}
           />
 
           <NetworkUsageChart
             networkIn={resourceUsage?.networkIn || []}
             networkOut={resourceUsage?.networkOut || []}
             isLoading={isLoadingResourceUsage}
-            error={errorResourceUsage}
+            error={resourceUsageError}
           />
         </div>
       )}
