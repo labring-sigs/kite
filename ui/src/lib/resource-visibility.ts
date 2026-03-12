@@ -2,9 +2,7 @@ export const HIDDEN_RESOURCE_TYPES = ['gateways', 'httproutes'] as const
 
 const hiddenResourceTypeSet = new Set<string>(HIDDEN_RESOURCE_TYPES)
 
-export const isResourceTypeHidden = (
-  resourceType?: string | null
-): boolean => {
+export const isResourceTypeHidden = (resourceType?: string | null): boolean => {
   if (!resourceType) {
     return false
   }

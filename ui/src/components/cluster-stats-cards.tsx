@@ -12,13 +12,13 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { OverviewData } from '@/types/api'
+import { useCluster } from '@/hooks/use-cluster'
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useCluster } from '@/hooks/use-cluster'
 
 interface ClusterStatsCardsProps {
   stats?: OverviewData

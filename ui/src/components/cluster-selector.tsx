@@ -1,7 +1,7 @@
+import { useAuth } from '@/contexts/auth-context'
 import { IconCheck, IconChevronDown, IconServer } from '@tabler/icons-react'
 
 import { cn } from '@/lib/utils'
-import { useAuth } from '@/contexts/auth-context'
 import { useCluster } from '@/hooks/use-cluster'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,7 +52,10 @@ const getClusterDisplayName = (cluster?: {
     return cluster.namespace
   }
   if (cluster.provider === 'sealos') {
-    const sealosNamespace = extractSealosWorkspace(cluster.name, cluster.username)
+    const sealosNamespace = extractSealosWorkspace(
+      cluster.name,
+      cluster.username
+    )
     if (sealosNamespace) return sealosNamespace
   }
   return cluster.name
@@ -143,8 +146,7 @@ export function ClusterSelector() {
               <span
                 className={cn(
                   'text-xs truncate',
-                  cluster.error ||
-                    !isAsciiClusterName(cluster.name)
+                  cluster.error || !isAsciiClusterName(cluster.name)
                     ? 'text-red-500'
                     : 'text-muted-foreground'
                 )}

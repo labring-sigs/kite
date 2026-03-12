@@ -50,7 +50,9 @@ export function ResourceCharts(props: ResourceChartsProps) {
             ? (memory.requested / memory.allocatable) * 100
             : 0,
         limitPercentage:
-          memory.allocatable > 0 ? (memory.limited / memory.allocatable) * 100 : 0,
+          memory.allocatable > 0
+            ? (memory.limited / memory.allocatable) * 100
+            : 0,
         unit: 'GiB',
       },
     ]
@@ -99,7 +101,8 @@ export function ResourceCharts(props: ResourceChartsProps) {
         const limitIsHigh = resource.limitPercentage > 90
         const limitIsMedium = resource.limitPercentage > 60
         const relativeBase = Math.max(resource.request, resource.limit, 1)
-        const requestRelativePercentage = (resource.request / relativeBase) * 100
+        const requestRelativePercentage =
+          (resource.request / relativeBase) * 100
         const limitRelativePercentage = (resource.limit / relativeBase) * 100
 
         return (
@@ -195,7 +198,8 @@ export function ResourceCharts(props: ResourceChartsProps) {
                   </div>
                 ) : (
                   <div className="text-xs text-muted-foreground">
-                    Namespace quota not configured; capacity percentages are unavailable.
+                    Namespace quota not configured; capacity percentages are
+                    unavailable.
                   </div>
                 )}
               </div>

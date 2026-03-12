@@ -8,6 +8,7 @@ import {
   APIKey,
   AuditLogResponse,
   Cluster,
+  clusterScopeResources,
   FetchUserListResponse,
   ImageTagInfo,
   OAuthProvider,
@@ -22,7 +23,6 @@ import {
   ResourceUsageHistory,
   Role,
   UserItem,
-  clusterScopeResources,
 } from '@/types/api'
 
 import { API_BASE_URL, apiClient } from './api-client'
@@ -54,9 +54,7 @@ async function fetchAPI<T>(endpoint: string): Promise<T> {
 const getCurrentScopedNamespace = (): string | undefined => {
   const currentCluster = localStorage.getItem('current-cluster')
   if (!currentCluster) return undefined
-  return (
-    localStorage.getItem(`${currentCluster}-scoped-namespace`) || undefined
-  )
+  return localStorage.getItem(`${currentCluster}-scoped-namespace`) || undefined
 }
 
 const getCurrentClusterCacheKey = (): string => {
@@ -647,7 +645,12 @@ export const useResourceUsageHistory = (
 ) => {
   const clusterKey = getCurrentClusterCacheKey()
   return useQuery({
-    queryKey: [clusterKey, 'resource-usage-history', duration, options?.instance],
+    queryKey: [
+      clusterKey,
+      'resource-usage-history',
+      duration,
+      options?.instance,
+    ],
     queryFn: () => fetchResourceUsageHistory(duration, options?.instance),
     enabled: options?.enabled,
     staleTime: options?.staleTime || 10000, // 10 seconds cache

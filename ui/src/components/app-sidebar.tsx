@@ -8,7 +8,7 @@ import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
 
-import { ResourceType, clusterScopeResources } from '@/types/api'
+import { clusterScopeResources, ResourceType } from '@/types/api'
 import { useVersionInfo } from '@/lib/api'
 import { useCluster } from '@/hooks/use-cluster'
 import {

@@ -26,7 +26,10 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
 import { globalSearch, SearchResult } from '@/lib/api'
-import { isResourceTypeHidden, isSidebarPathHidden } from '@/lib/resource-visibility'
+import {
+  isResourceTypeHidden,
+  isSidebarPathHidden,
+} from '@/lib/resource-visibility'
 import { useCluster } from '@/hooks/use-cluster'
 import { useFavorites } from '@/hooks/use-favorites'
 import { Badge } from '@/components/ui/badge'
@@ -339,7 +342,9 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       setIsLoading(true)
       const response = await globalSearch(searchQuery, { limit: 10 })
       setResults(
-        response.results.filter((result) => !isResourceTypeHidden(result.resourceType))
+        response.results.filter(
+          (result) => !isResourceTypeHidden(result.resourceType)
+        )
       )
     } catch (error) {
       console.error('Search failed:', error)
@@ -357,7 +362,9 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     if (!query || query.length < 2) {
       if (query.length === 0) {
         setResults(
-          favorites.filter((result) => !isResourceTypeHidden(result.resourceType))
+          favorites.filter(
+            (result) => !isResourceTypeHidden(result.resourceType)
+          )
         )
       }
       return

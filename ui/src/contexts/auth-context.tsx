@@ -1,17 +1,17 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
-  useCallback,
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
 } from 'react'
+import i18n from '@/i18n'
 import { useQueryClient } from '@tanstack/react-query'
 import * as sealosDesktopSDK from 'sealos-desktop-sdk/app'
 
-import i18n from '@/i18n'
 import {
   CURRENT_CLUSTER_CHANGE_EVENT,
   readCurrentCluster,
@@ -209,7 +209,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const checkAuthInternal = useCallback(
-    async (options?: { preserveUserOnFailure?: boolean }): Promise<User | null> => {
+    async (options?: {
+      preserveUserOnFailure?: boolean
+    }): Promise<User | null> => {
       const preserveUserOnFailure = options?.preserveUserOnFailure === true
       const previousUser = userRef.current
 

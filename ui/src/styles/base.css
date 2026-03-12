@@ -7,10 +7,8 @@
   font-display: swap;
   font-weight: 400;
   src:
-    url('@/assets/fonts/maple-mono-latin-400-normal.woff2')
-      format('woff2'),
-    url('@/assets/fonts/maple-mono-latin-400-normal.woff')
-      format('woff');
+    url('@/assets/fonts/maple-mono-latin-400-normal.woff2') format('woff2'),
+    url('@/assets/fonts/maple-mono-latin-400-normal.woff') format('woff');
 }
 
 /* jetbrains-mono-latin-wght-normal */

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { ResourceType, clusterScopeResources } from '@/types/api'
+import { clusterScopeResources, ResourceType } from '@/types/api'
 import { useCluster } from '@/hooks/use-cluster'
 import { usePageTitle } from '@/hooks/use-page-title'
 import { Card, CardContent } from '@/components/ui/card'

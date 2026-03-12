@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/contexts/auth-context'
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -29,7 +30,6 @@ import { toast } from 'sonner'
 import { ResourceType } from '@/types/api'
 import { deleteResource, useResources, useResourcesWatch } from '@/lib/api'
 import { useCluster } from '@/hooks/use-cluster'
-import { useAuth } from '@/contexts/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'

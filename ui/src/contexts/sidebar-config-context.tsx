@@ -43,8 +43,8 @@ import {
   SidebarGroup,
   SidebarItem,
 } from '@/types/sidebar'
-import { withSubPath } from '@/lib/subpath'
 import { isSidebarPathHidden } from '@/lib/resource-visibility'
+import { withSubPath } from '@/lib/subpath'
 
 import { useAuth } from './auth-context'
 
@@ -229,8 +229,12 @@ const sanitizeSidebarConfig = (config: SidebarConfig): SidebarConfig => {
   return {
     ...config,
     groups,
-    pinnedItems: config.pinnedItems.filter((itemId) => !removedItemIds.has(itemId)),
-    hiddenItems: config.hiddenItems.filter((itemId) => !removedItemIds.has(itemId)),
+    pinnedItems: config.pinnedItems.filter(
+      (itemId) => !removedItemIds.has(itemId)
+    ),
+    hiddenItems: config.hiddenItems.filter(
+      (itemId) => !removedItemIds.has(itemId)
+    ),
   }
 }
 

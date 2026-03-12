@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,36 +29,33 @@ type OverviewData struct {
 	Resource        common.ResourceMetric `json:"resource"`
 }
 
-func GetOverview(c *gin.Context) {
-	ctx := c.Request.Context()
+type overviewResourceSummary struct {
+	cpuAllocatable resource.Quantity
+	memAllocatable resource.Quantity
+	cpuRequested   resource.Quantity
+	memRequested   resource.Quantity
+	cpuLimited     resource.Quantity
+	memLimited     resource.Quantity
+	cpuBasis       string
+	memoryBasis    string
+}
 
-	cs := c.MustGet("cluster").(*cluster.ClientSet)
-	user := c.MustGet("user").(model.User)
-	if len(user.Roles) == 0 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+func newOverviewResourceSummary() overviewResourceSummary {
+	return overviewResourceSummary{
+		cpuBasis:    common.ResourceBasisClusterAllocatable,
+		memoryBasis: common.ResourceBasisClusterAllocatable,
 	}
+}
 
-	// Get nodes
-	nodes := &v1.NodeList{}
-	if err := cs.K8sClient.List(ctx, nodes, &client.ListOptions{}); err != nil {
-		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
-			klog.Warningf("overview: skip nodes for cluster %s due to permission: %v", cs.Name, err)
-			nodes = &v1.NodeList{}
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-	}
-
+func (s *overviewResourceSummary) collectNodeStats(nodes []v1.Node) int {
 	readyNodes := 0
-	var cpuAllocatable, memAllocatable resource.Quantity
-	var cpuRequested, memRequested resource.Quantity
-	var cpuLimited, memLimited resource.Quantity
-	cpuBasis := common.ResourceBasisClusterAllocatable
-	memoryBasis := common.ResourceBasisClusterAllocatable
-	for _, node := range nodes.Items {
-		cpuAllocatable.Add(*node.Status.Allocatable.Cpu())
-		memAllocatable.Add(*node.Status.Allocatable.Memory())
+	for _, node := range nodes {
+		if cpu := node.Status.Allocatable.Cpu(); cpu != nil {
+			s.cpuAllocatable.Add(*cpu)
+		}
+		if memory := node.Status.Allocatable.Memory(); memory != nil {
+			s.memAllocatable.Add(*memory)
+		}
 		for _, condition := range node.Status.Conditions {
 			if condition.Type == v1.NodeReady && condition.Status == v1.ConditionTrue {
 				readyNodes++
@@ -65,30 +63,25 @@ func GetOverview(c *gin.Context) {
 			}
 		}
 	}
+	return readyNodes
+}
 
-	// Get pods
-	pods := &v1.PodList{}
-	podListOptions := &client.ListOptions{}
-	if cs.NamespaceScoped && cs.Namespace != "" {
-		podListOptions.Namespace = cs.Namespace
-	}
-	if err := cs.K8sClient.List(ctx, pods, podListOptions); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
+func (s *overviewResourceSummary) collectPodStats(pods []v1.Pod) int {
 	runningPods := 0
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		for _, container := range pod.Spec.Containers {
-			cpuRequested.Add(*container.Resources.Requests.Cpu())
-			memRequested.Add(*container.Resources.Requests.Memory())
-
+			if cpuRequest := container.Resources.Requests.Cpu(); cpuRequest != nil {
+				s.cpuRequested.Add(*cpuRequest)
+			}
+			if memoryRequest := container.Resources.Requests.Memory(); memoryRequest != nil {
+				s.memRequested.Add(*memoryRequest)
+			}
 			if container.Resources.Limits != nil {
 				if cpuLimit := container.Resources.Limits.Cpu(); cpuLimit != nil {
-					cpuLimited.Add(*cpuLimit)
+					s.cpuLimited.Add(*cpuLimit)
 				}
-				if memLimit := container.Resources.Limits.Memory(); memLimit != nil {
-					memLimited.Add(*memLimit)
+				if memoryLimit := container.Resources.Limits.Memory(); memoryLimit != nil {
+					s.memLimited.Add(*memoryLimit)
 				}
 			}
 		}
@@ -96,90 +89,189 @@ func GetOverview(c *gin.Context) {
 			runningPods++
 		}
 	}
+	return runningPods
+}
 
+func (s *overviewResourceSummary) applyNamespaceQuota(cpuQuotaMilli, memoryQuotaBytes int64, hasCPUQuota, hasMemoryQuota bool) {
+	if hasCPUQuota {
+		s.cpuAllocatable = *resource.NewMilliQuantity(cpuQuotaMilli, resource.DecimalSI)
+		s.cpuBasis = common.ResourceBasisNamespaceQuota
+	} else {
+		s.cpuBasis = common.ResourceBasisNamespaceNoQuota
+	}
+	if hasMemoryQuota {
+		s.memAllocatable = *resource.NewQuantity(memoryQuotaBytes, resource.BinarySI)
+		s.memoryBasis = common.ResourceBasisNamespaceQuota
+	} else {
+		s.memoryBasis = common.ResourceBasisNamespaceNoQuota
+	}
+}
+
+func (s *overviewResourceSummary) toMetric() common.ResourceMetric {
+	return common.ResourceMetric{
+		CPU: common.Resource{
+			Allocatable: s.cpuAllocatable.MilliValue(),
+			Requested:   s.cpuRequested.MilliValue(),
+			Limited:     s.cpuLimited.MilliValue(),
+			Basis:       s.cpuBasis,
+		},
+		Mem: common.Resource{
+			Allocatable: s.memAllocatable.MilliValue(),
+			Requested:   s.memRequested.MilliValue(),
+			Limited:     s.memLimited.MilliValue(),
+			Basis:       s.memoryBasis,
+		},
+	}
+}
+
+func listOptionsForScopedNamespace(cs *cluster.ClientSet) *client.ListOptions {
+	listOptions := &client.ListOptions{}
 	if cs.NamespaceScoped && cs.Namespace != "" {
-		var quotaList v1.ResourceQuotaList
-		if err := cs.K8sClient.List(ctx, &quotaList, client.InNamespace(cs.Namespace)); err != nil {
-			if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
-				klog.Warningf("overview: skip resourcequotas for namespace %s due to permission: %v", cs.Namespace, err)
-			} else {
-				klog.Warningf("overview: failed to list resourcequotas for namespace %s: %v", cs.Namespace, err)
-			}
-		} else {
-			cpuQuotaMilli, memoryQuotaBytes, hasCPUQuota, hasMemoryQuota, err := extractNamespaceQuotaHard(quotaList.Items)
-			if err != nil {
-				klog.Warningf("overview: failed to parse resourcequotas for namespace %s: %v", cs.Namespace, err)
-			} else {
-				if hasCPUQuota {
-					cpuAllocatable = *resource.NewMilliQuantity(cpuQuotaMilli, resource.DecimalSI)
-					cpuBasis = common.ResourceBasisNamespaceQuota
-				} else {
-					cpuBasis = common.ResourceBasisNamespaceNoQuota
-				}
-				if hasMemoryQuota {
-					memAllocatable = *resource.NewQuantity(memoryQuotaBytes, resource.BinarySI)
-					memoryBasis = common.ResourceBasisNamespaceQuota
-				} else {
-					memoryBasis = common.ResourceBasisNamespaceNoQuota
-				}
-			}
+		listOptions.Namespace = cs.Namespace
+	}
+	return listOptions
+}
+
+func isPermissionDeniedError(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
+}
+
+func listOverviewNodes(ctx context.Context, cs *cluster.ClientSet) (*v1.NodeList, error) {
+	nodes := &v1.NodeList{}
+	if err := cs.K8sClient.List(ctx, nodes, &client.ListOptions{}); err != nil {
+		if isPermissionDeniedError(err) {
+			klog.Warningf("overview: skip nodes for cluster %s due to permission: %v", cs.Name, err)
+			return &v1.NodeList{}, nil
 		}
+		return nil, err
+	}
+	return nodes, nil
+}
+
+func listOverviewPods(ctx context.Context, cs *cluster.ClientSet) (*v1.PodList, error) {
+	pods := &v1.PodList{}
+	if err := cs.K8sClient.List(ctx, pods, listOptionsForScopedNamespace(cs)); err != nil {
+		return nil, err
+	}
+	return pods, nil
+}
+
+func applyOverviewNamespaceQuota(ctx context.Context, cs *cluster.ClientSet, summary *overviewResourceSummary) {
+	if !cs.NamespaceScoped || cs.Namespace == "" {
+		return
 	}
 
-	// Get namespaces
+	var quotaList v1.ResourceQuotaList
+	if err := cs.K8sClient.List(ctx, &quotaList, client.InNamespace(cs.Namespace)); err != nil {
+		if isPermissionDeniedError(err) {
+			klog.Warningf("overview: skip resourcequotas for namespace %s due to permission: %v", cs.Namespace, err)
+		} else {
+			klog.Warningf("overview: failed to list resourcequotas for namespace %s: %v", cs.Namespace, err)
+		}
+		return
+	}
+
+	cpuQuotaMilli, memoryQuotaBytes, hasCPUQuota, hasMemoryQuota := extractNamespaceQuotaHard(quotaList.Items)
+	summary.applyNamespaceQuota(cpuQuotaMilli, memoryQuotaBytes, hasCPUQuota, hasMemoryQuota)
+}
+
+func listOverviewNamespaces(ctx context.Context, cs *cluster.ClientSet) (*v1.NamespaceList, error) {
 	namespaces := &v1.NamespaceList{}
 	if cs.NamespaceScoped && cs.Namespace != "" {
 		namespaces.Items = append(namespaces.Items, v1.Namespace{})
-	} else if err := cs.K8sClient.List(ctx, namespaces, &client.ListOptions{}); err != nil {
-		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+		return namespaces, nil
+	}
+	if err := cs.K8sClient.List(ctx, namespaces, &client.ListOptions{}); err != nil {
+		if isPermissionDeniedError(err) {
 			klog.Warningf("overview: skip namespaces for cluster %s due to permission: %v", cs.Name, err)
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			return namespaces, nil
 		}
+		return nil, err
+	}
+	return namespaces, nil
+}
+
+func listOverviewServices(ctx context.Context, cs *cluster.ClientSet) (*v1.ServiceList, error) {
+	services := &v1.ServiceList{}
+	if err := cs.K8sClient.List(ctx, services, listOptionsForScopedNamespace(cs)); err != nil {
+		return nil, err
+	}
+	return services, nil
+}
+
+func listOverviewIngresses(ctx context.Context, cs *cluster.ClientSet) (*networkingv1.IngressList, error) {
+	ingresses := &networkingv1.IngressList{}
+	if err := cs.K8sClient.List(ctx, ingresses, listOptionsForScopedNamespace(cs)); err != nil {
+		if isPermissionDeniedError(err) {
+			klog.Warningf("overview: skip ingresses for cluster %s due to permission: %v", cs.Name, err)
+			return &networkingv1.IngressList{}, nil
+		}
+		return nil, err
+	}
+	return ingresses, nil
+}
+
+func listOverviewPVCs(ctx context.Context, cs *cluster.ClientSet) (*v1.PersistentVolumeClaimList, error) {
+	pvcs := &v1.PersistentVolumeClaimList{}
+	if err := cs.K8sClient.List(ctx, pvcs, listOptionsForScopedNamespace(cs)); err != nil {
+		if isPermissionDeniedError(err) {
+			klog.Warningf("overview: skip persistentvolumeclaims for cluster %s due to permission: %v", cs.Name, err)
+			return &v1.PersistentVolumeClaimList{}, nil
+		}
+		return nil, err
+	}
+	return pvcs, nil
+}
+
+func GetOverview(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	cs := c.MustGet("cluster").(*cluster.ClientSet)
+	user := c.MustGet("user").(model.User)
+	if len(user.Roles) == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
 	}
 
-	// Get services
-	services := &v1.ServiceList{}
-	serviceListOptions := &client.ListOptions{}
-	if cs.NamespaceScoped && cs.Namespace != "" {
-		serviceListOptions.Namespace = cs.Namespace
-	}
-	if err := cs.K8sClient.List(ctx, services, serviceListOptions); err != nil {
+	nodes, err := listOverviewNodes(ctx, cs)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Get ingresses
-	ingresses := &networkingv1.IngressList{}
-	ingressListOptions := &client.ListOptions{}
-	if cs.NamespaceScoped && cs.Namespace != "" {
-		ingressListOptions.Namespace = cs.Namespace
-	}
-	if err := cs.K8sClient.List(ctx, ingresses, ingressListOptions); err != nil {
-		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
-			klog.Warningf("overview: skip ingresses for cluster %s due to permission: %v", cs.Name, err)
-			ingresses = &networkingv1.IngressList{}
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+	pods, err := listOverviewPods(ctx, cs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
-	// Get persistentvolumeclaims
-	pvcs := &v1.PersistentVolumeClaimList{}
-	pvcListOptions := &client.ListOptions{}
-	if cs.NamespaceScoped && cs.Namespace != "" {
-		pvcListOptions.Namespace = cs.Namespace
+	resourceSummary := newOverviewResourceSummary()
+	readyNodes := resourceSummary.collectNodeStats(nodes.Items)
+	runningPods := resourceSummary.collectPodStats(pods.Items)
+	applyOverviewNamespaceQuota(ctx, cs, &resourceSummary)
+
+	namespaces, err := listOverviewNamespaces(ctx, cs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-	if err := cs.K8sClient.List(ctx, pvcs, pvcListOptions); err != nil {
-		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
-			klog.Warningf("overview: skip persistentvolumeclaims for cluster %s due to permission: %v", cs.Name, err)
-			pvcs = &v1.PersistentVolumeClaimList{}
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+
+	services, err := listOverviewServices(ctx, cs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ingresses, err := listOverviewIngresses(ctx, cs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	pvcs, err := listOverviewPVCs(ctx, cs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	overview := OverviewData{
@@ -192,20 +284,7 @@ func GetOverview(c *gin.Context) {
 		TotalPVCs:       len(pvcs.Items),
 		TotalServices:   len(services.Items),
 		PromEnabled:     cs.PromClient != nil,
-		Resource: common.ResourceMetric{
-			CPU: common.Resource{
-				Allocatable: cpuAllocatable.MilliValue(),
-				Requested:   cpuRequested.MilliValue(),
-				Limited:     cpuLimited.MilliValue(),
-				Basis:       cpuBasis,
-			},
-			Mem: common.Resource{
-				Allocatable: memAllocatable.MilliValue(),
-				Requested:   memRequested.MilliValue(),
-				Limited:     memLimited.MilliValue(),
-				Basis:       memoryBasis,
-			},
-		},
+		Resource:        resourceSummary.toMetric(),
 	}
 
 	c.JSON(http.StatusOK, overview)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createColumnHelper } from '@tanstack/react-table'
 import { useQuery } from '@tanstack/react-query'
+import { createColumnHelper } from '@tanstack/react-table'
 import * as yaml from 'js-yaml'
 import { CustomResourceDefinition } from 'kubernetes-types/apiextensions/v1'
 import { get } from 'lodash'
@@ -30,7 +30,8 @@ export function CRListPage() {
   const isClusterScopeBlocked = !!currentClusterInfo?.namespaceScoped
   const { data: crdData, isLoading: isLoadingCRD } = useQuery({
     queryKey: ['crds', crd],
-    queryFn: () => fetchResource<CustomResourceDefinition>('crds', crd!, '_all'),
+    queryFn: () =>
+      fetchResource<CustomResourceDefinition>('crds', crd!, '_all'),
     enabled: !!crd && !isClusterScopeBlocked,
   })
 

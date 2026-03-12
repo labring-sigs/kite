@@ -5,8 +5,8 @@ import { toast } from 'sonner'
 
 import { Cluster } from '@/types/api'
 import {
-  CURRENT_CLUSTER_STORAGE_KEY,
   CURRENT_CLUSTER_CHANGE_EVENT,
+  CURRENT_CLUSTER_STORAGE_KEY,
   readCurrentCluster,
   writeCurrentCluster,
 } from '@/lib/current-cluster'
@@ -84,7 +84,9 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentClusterInfo || !currentClusterInfo.name) return
 
     const scopedNamespaceKey = getScopedNamespaceKey(currentClusterInfo.name)
-    const selectedNamespaceKey = getSelectedNamespaceKey(currentClusterInfo.name)
+    const selectedNamespaceKey = getSelectedNamespaceKey(
+      currentClusterInfo.name
+    )
     if (currentClusterInfo.namespaceScoped && currentClusterInfo.namespace) {
       localStorage.setItem(scopedNamespaceKey, currentClusterInfo.namespace)
       localStorage.setItem(selectedNamespaceKey, currentClusterInfo.namespace)

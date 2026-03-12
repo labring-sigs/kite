@@ -21,10 +21,7 @@ func TestExtractNamespaceQuotaCapacitiesPreferLimits(t *testing.T) {
 		},
 	}
 
-	cpu, memory, hasCPU, hasMemory, err := extractNamespaceQuotaCapacities(quotas)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	cpu, memory, hasCPU, hasMemory := extractNamespaceQuotaCapacities(quotas)
 	memoryLimit := resource.MustParse("8Gi")
 	if !hasCPU || cpu != 4 {
 		t.Fatalf("expected cpu quota 4 cores, got hasCPU=%v cpu=%v", hasCPU, cpu)
@@ -46,10 +43,7 @@ func TestExtractNamespaceQuotaCapacitiesFallbackToRequestsAndSpecHard(t *testing
 		},
 	}
 
-	cpu, memory, hasCPU, hasMemory, err := extractNamespaceQuotaCapacities(quotas)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	cpu, memory, hasCPU, hasMemory := extractNamespaceQuotaCapacities(quotas)
 	memoryRequest := resource.MustParse("2Gi")
 	if !hasCPU || cpu != 1.5 {
 		t.Fatalf("expected cpu quota 1.5 cores, got hasCPU=%v cpu=%v", hasCPU, cpu)
@@ -66,10 +60,7 @@ func TestExtractNamespaceQuotaCapacitiesNoQuota(t *testing.T) {
 		},
 	}
 
-	cpu, memory, hasCPU, hasMemory, err := extractNamespaceQuotaCapacities(quotas)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	cpu, memory, hasCPU, hasMemory := extractNamespaceQuotaCapacities(quotas)
 	if hasCPU || cpu != 0 {
 		t.Fatalf("expected no cpu quota, got hasCPU=%v cpu=%v", hasCPU, cpu)
 	}

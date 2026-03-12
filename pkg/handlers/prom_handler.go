@@ -260,18 +260,16 @@ func (h *PromHandler) getNamespaceQuotaCapacities(ctx context.Context, cs *clust
 	if err := cs.K8sClient.List(ctx, &quotaList, client.InNamespace(namespace)); err != nil {
 		return 0, 0, false, false, err
 	}
-	return extractNamespaceQuotaCapacities(quotaList.Items)
+	cpuCapacity, memoryCapacity, hasCPU, hasMemory := extractNamespaceQuotaCapacities(quotaList.Items)
+	return cpuCapacity, memoryCapacity, hasCPU, hasMemory, nil
 }
 
-func extractNamespaceQuotaCapacities(quotas []corev1.ResourceQuota) (float64, float64, bool, bool, error) {
-	cpuMilli, memoryBytes, hasCPU, hasMemory, err := extractNamespaceQuotaHard(quotas)
-	if err != nil {
-		return 0, 0, false, false, err
-	}
-	return float64(cpuMilli) / 1000.0, float64(memoryBytes), hasCPU, hasMemory, nil
+func extractNamespaceQuotaCapacities(quotas []corev1.ResourceQuota) (float64, float64, bool, bool) {
+	cpuMilli, memoryBytes, hasCPU, hasMemory := extractNamespaceQuotaHard(quotas)
+	return float64(cpuMilli) / 1000.0, float64(memoryBytes), hasCPU, hasMemory
 }
 
-func extractNamespaceQuotaHard(quotas []corev1.ResourceQuota) (int64, int64, bool, bool, error) {
+func extractNamespaceQuotaHard(quotas []corev1.ResourceQuota) (int64, int64, bool, bool) {
 	limitCPUMilli := int64(0)
 	requestCPUMilli := int64(0)
 	limitMemoryBytes := int64(0)
@@ -304,5 +302,5 @@ func extractNamespaceQuotaHard(quotas []corev1.ResourceQuota) (int64, int64, boo
 	if memoryBytes == 0 {
 		memoryBytes = requestMemoryBytes
 	}
-	return cpuMilli, memoryBytes, cpuMilli > 0, memoryBytes > 0, nil
+	return cpuMilli, memoryBytes, cpuMilli > 0, memoryBytes > 0
 }
