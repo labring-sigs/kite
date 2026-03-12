@@ -188,8 +188,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [providers, setProviders] = useState<string[]>([])
   const queryClient = useQueryClient()
+  const userRef = useRef<User | null>(null)
   const sealosSyncingRef = useRef(false)
   const pendingSealosSyncRef = useRef(false)
+
+  useEffect(() => {
+    userRef.current = user
+  }, [user])
 
   const loadProviders = async () => {
     try {
@@ -203,35 +208,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const checkAuthInternal = useCallback(async (): Promise<User | null> => {
-    try {
-      const response = await fetch(withSubPath('/api/auth/user'), {
-        credentials: 'include',
-      })
+  const checkAuthInternal = useCallback(
+    async (options?: { preserveUserOnFailure?: boolean }): Promise<User | null> => {
+      const preserveUserOnFailure = options?.preserveUserOnFailure === true
+      const previousUser = userRef.current
 
-      if (response.ok) {
-        const data = await response.json()
-        const user = data.user as User
-        user.capabilities = data.capabilities as UserCapabilities | undefined
-        user.isAdmin = function () {
-          return (
-            this.roles?.some(
-              (role: { name: string }) => role.name === 'admin'
-            ) || false
-          )
+      try {
+        const response = await fetch(withSubPath('/api/auth/user'), {
+          credentials: 'include',
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          const user = data.user as User
+          user.capabilities = data.capabilities as UserCapabilities | undefined
+          user.isAdmin = function () {
+            return (
+              this.roles?.some(
+                (role: { name: string }) => role.name === 'admin'
+              ) || false
+            )
+          }
+          setUser(user)
+          return user
         }
-        setUser(user)
-        return user
-      } else {
+
+        if (preserveUserOnFailure && previousUser) {
+          return previousUser
+        }
+        setUser(null)
+        return null
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        if (preserveUserOnFailure && previousUser) {
+          return previousUser
+        }
         setUser(null)
         return null
       }
-    } catch (error) {
-      console.error('Auth check failed:', error)
-      setUser(null)
-      return null
-    }
-  }, [])
+    },
+    []
+  )
 
   const checkAuth = useCallback(async () => {
     await checkAuthInternal()
@@ -311,7 +328,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           })
         }
 
-        await checkAuthInternal()
+        await checkAuthInternal({ preserveUserOnFailure: true })
         return true
       } catch (error) {
         console.error('Sealos session sync failed:', error)
@@ -521,7 +538,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const syncPermissionsByCluster = () => {
       if (!user) return
-      void checkAuthInternal()
+      void checkAuthInternal({ preserveUserOnFailure: true })
     }
     window.addEventListener(
       CURRENT_CLUSTER_CHANGE_EVENT,
