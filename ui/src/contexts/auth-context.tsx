@@ -189,8 +189,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [providers, setProviders] = useState<string[]>([])
   const queryClient = useQueryClient()
   const userRef = useRef<User | null>(null)
-  const sealosSyncingRef = useRef(false)
-  const pendingSealosSyncRef = useRef(false)
+  const sealosSyncPromiseRef = useRef<Promise<boolean> | null>(null)
 
   useEffect(() => {
     userRef.current = user
@@ -267,81 +266,84 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return false
       }
 
-      if (sealosSyncingRef.current) {
-        pendingSealosSyncRef.current = true
-        return false
+      if (sealosSyncPromiseRef.current) {
+        return await sealosSyncPromiseRef.current
       }
 
-      sealosSyncingRef.current = true
-      try {
-        const sealosSession = await getSealosSession()
-        if (!sealosSession) {
-          return false
-        }
+      const syncPromise = (async (): Promise<boolean> => {
+        try {
+          const sealosSession = await getSealosSession()
+          if (!sealosSession) {
+            return false
+          }
 
-        const response = await fetch(withSubPath('/api/auth/login/sealos'), {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            token: sealosSession.token,
-            kubeconfig: sealosSession.kubeconfig,
-            user: sealosSession.user,
-          }),
-        })
-
-        if (!response.ok) {
-          return false
-        }
-
-        const data = await response.json()
-        await queryClient.invalidateQueries({ queryKey: ['init-check'] })
-        await queryClient.invalidateQueries({ queryKey: ['clusters'] })
-        await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
-        await queryClient.refetchQueries({
-          queryKey: ['clusters'],
-          type: 'active',
-        })
-
-        const previousCluster = readCurrentCluster()
-        const nextCluster =
-          data?.cluster && typeof data.cluster === 'string'
-            ? data.cluster
-            : null
-
-        if (nextCluster) {
-          writeCurrentCluster(nextCluster)
-        }
-
-        if (nextCluster && nextCluster !== previousCluster) {
-          await queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey[0] as string
-              return ![
-                'user',
-                'auth',
-                'clusters',
-                'cluster-list',
-                'init-check',
-              ].includes(key)
+          const response = await fetch(withSubPath('/api/auth/login/sealos'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
             },
+            body: JSON.stringify({
+              token: sealosSession.token,
+              kubeconfig: sealosSession.kubeconfig,
+              user: sealosSession.user,
+            }),
           })
-        }
 
-        await checkAuthInternal({ preserveUserOnFailure: true })
-        return true
-      } catch (error) {
-        console.error('Sealos session sync failed:', error)
-        return false
+          if (!response.ok) {
+            return false
+          }
+
+          const data = await response.json()
+          await queryClient.invalidateQueries({ queryKey: ['init-check'] })
+          await queryClient.invalidateQueries({ queryKey: ['clusters'] })
+          await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
+          await queryClient.refetchQueries({
+            queryKey: ['clusters'],
+            type: 'active',
+          })
+
+          const previousCluster = readCurrentCluster()
+          const nextCluster =
+            data?.cluster && typeof data.cluster === 'string'
+              ? data.cluster
+              : null
+
+          if (nextCluster) {
+            writeCurrentCluster(nextCluster)
+          }
+
+          if (nextCluster && nextCluster !== previousCluster) {
+            await queryClient.invalidateQueries({
+              predicate: (query) => {
+                const key = query.queryKey[0] as string
+                return ![
+                  'user',
+                  'auth',
+                  'clusters',
+                  'cluster-list',
+                  'init-check',
+                ].includes(key)
+              },
+              // Avoid immediate refetch with stale cluster header during workspace switch.
+              refetchType: 'none',
+            })
+          }
+
+          await checkAuthInternal({ preserveUserOnFailure: true })
+          return true
+        } catch (error) {
+          console.error('Sealos session sync failed:', error)
+          return false
+        }
+      })()
+
+      sealosSyncPromiseRef.current = syncPromise
+      try {
+        return await syncPromise
       } finally {
-        sealosSyncingRef.current = false
-        if (pendingSealosSyncRef.current) {
-          pendingSealosSyncRef.current = false
-          setTimeout(() => {
-            void syncSealosSession(currentUser)
-          }, 0)
+        if (sealosSyncPromiseRef.current === syncPromise) {
+          sealosSyncPromiseRef.current = null
         }
       }
     },

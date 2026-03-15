@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useSidebarConfig } from '@/contexts/sidebar-config-context'
 import {
   ArrowDown,
@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { clusterScopeResources, ResourceType } from '@/types/api'
+import { useCluster } from '@/hooks/use-cluster'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +38,7 @@ export function SidebarCustomizer({
   onOpenChange?: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const { currentClusterInfo } = useCluster()
   const [open, setOpen] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [selectedCRD, setSelectedCRD] = useState<
@@ -63,6 +66,22 @@ export function SidebarCustomizer({
     moveGroup,
   } = useSidebarConfig()
 
+  const getResourceByUrl = useCallback((url: string): ResourceType | null => {
+    const path = url.replace(/^\/+/, '').split('/')[0]
+    if (!path) return null
+    return path as ResourceType
+  }, [])
+
+  const shouldShowItemInCurrentCluster = useCallback(
+    (url: string) => {
+      if (!currentClusterInfo?.namespaceScoped) return true
+      const resource = getResourceByUrl(url)
+      if (!resource) return true
+      return !clusterScopeResources.includes(resource)
+    },
+    [currentClusterInfo, getResourceByUrl]
+  )
+
   const handleCreateGroup = () => {
     if (!canCreateCustomGroup) {
       return
@@ -84,13 +103,22 @@ export function SidebarCustomizer({
     if (!config) return []
     return config.groups
       .flatMap((group) => group.items)
+      .filter((item) => shouldShowItemInCurrentCluster(item.url))
       .filter((item) => config.pinnedItems.includes(item.id))
-  }, [config])
+  }, [config, shouldShowItemInCurrentCluster])
 
   const sortedGroups = useMemo(() => {
     if (!config) return []
-    return [...config.groups].sort((a, b) => a.order - b.order)
-  }, [config])
+    return [...config.groups]
+      .sort((a, b) => a.order - b.order)
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) =>
+          shouldShowItemInCurrentCluster(item.url)
+        ),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [config, shouldShowItemInCurrentCluster])
 
   if (isLoading || !config) {
     return null
