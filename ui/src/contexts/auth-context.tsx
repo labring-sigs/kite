@@ -325,6 +325,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   'init-check',
                 ].includes(key)
               },
+              // Avoid immediate refetch with stale cluster header during workspace switch.
+              refetchType: 'none',
             })
           }
 
