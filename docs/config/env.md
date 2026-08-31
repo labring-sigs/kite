@@ -2,10 +2,9 @@
 
 Kite supports several environment variables by default to change the default values of some configuration items.
 
-- **KITE_USERNAME**: Set the initial administrator username. Can be created through the initialization page
-- **KITE_PASSWORD**: Set the initial administrator password. Can be created through the initialization page
-- **KUBECONFIG**: Kubernetes configuration file path, default value is `~/.kube/config`. When kite has no configured clusters, it will discover and import clusters from this path by default. Can import clusters through the initialization page
-- **ANONYMOUS_USER_ENABLED**: Enable anonymous user access, default value is `false`. When enabled, all access will no longer require authentication and will have the highest permissions by default.
+- **KITE_USERNAME**: Set the initial administrator username. The user is created at boot when no users exist yet.
+- **KITE_PASSWORD**: Set the initial administrator password. Used together with `KITE_USERNAME`.
+- **KUBECONFIG**: Kubernetes configuration file path, default value is `~/.kube/config`. When kite has no configured clusters, it will discover and import clusters from this path at boot.
 
 - **JWT_SECRET**: Secret key used for signing and verifying JWT
 - **KITE_ENCRYPT_KEY**: Secret key used for encrypting sensitive data, such as user passwords, OAuth clientSecret, kubeconfig, etc.

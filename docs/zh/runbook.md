@@ -76,7 +76,6 @@ make docs-build
 - `JWT_SECRET`：Kite 会话签名密钥。
 - `KITE_ENCRYPT_KEY`：敏感存储值的加密密钥。
 - `KUBECONFIG`：首次导入集群时使用的 kubeconfig 路径。
-- `ANONYMOUS_USER_ENABLED`：跳过普通认证。除非部署环境明确可信，否则不要在生产环境开启。
 - `SEALOS_AUTH_ENABLED`：启用 Sealos 登录接口。
 - `SEALOS_JWT_SECRET`：Sealos 认证校验使用的 JWT 密钥。
 - `KITE_NAMESPACE_SCOPE_EXEMPT_NAMESPACES`：逗号分隔的 Sealos 工作空间命名空间列表，表示这些工作空间使用全局/管理员凭据。命中的 Sealos 用户会获得其托管集群下的 `*` 命名空间权限，并被分配 Kite 内置 `admin` 角色。

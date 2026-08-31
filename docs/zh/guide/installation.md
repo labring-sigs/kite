@@ -138,17 +138,14 @@ spec:
 
 ## 验证安装
 
-安装完成后，可访问仪表盘验证 Kite 是否部署成功。预期界面如下：
+安装完成后，首次引导方式取决于部署模式：
+
+- **Sealos 部署**：从 Sealos 桌面打开 Kite，Sealos 会话会自动完成登录，并在首次登录时自动注册你的工作空间集群，无需手动设置。
+- **独立部署**：不再有初始化向导。请通过 `KITE_USERNAME`/`KITE_PASSWORD` 提供初始管理员；当没有任何集群时，Kite 会在启动时从 `KUBECONFIG`（默认 `~/.kube/config`）导入集群，之后也可以由管理员在设置页中添加集群。
 
 ::: tip
 如需通过环境变量配置 Kite，请参考 [环境变量](../config/env)。
 :::
-
-![setup](../../screenshots/setup.png)
-
-![setup](../../screenshots/setup2.png)
-
-可根据页面提示完成集群设置。
 
 ## 卸载 Kite
 

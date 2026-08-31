@@ -6,17 +6,16 @@ This document summarizes the main route and navigation structure for Kite.
 
 | Route | Component | Purpose |
 | --- | --- | --- |
-| `/setup` | `InitializationPage` | First-run setup for creating the initial user and importing a cluster. |
-| `/login` | `LoginPage` | Standalone operational fault page for auth/session failures. It is not an interactive login form. |
+| `/login` | `LoginPage` | Standalone page for auth/session failures and, in Sealos deployments opened outside the Sealos desktop, the "open from Sealos Desktop" entry notice. It is not an interactive login form. |
 | `/` | `App` with `ProtectedRoute` | Authenticated application shell with sidebar, header, global search, and resource routes. |
 
 All routes respect the optional `KITE_BASE` subpath through `getSubPath()` and React Router `basename`.
 
-## Auth And Initialization Gates
+## Auth Gates
 
-- `InitCheckRoute` wraps `/login` and `/`, sending uninitialized installs to `/setup`.
 - `ProtectedRoute` wraps `/`, sending missing users to `/login?reason=unauthenticated`.
 - Auth refresh and API auth failures use reason-coded `/login` redirects so the fault page can explain the likely operator-owned issue.
+- First-run bootstrap no longer uses a setup wizard: users and clusters come from boot-time environment configuration (`KITE_USERNAME`/`KITE_PASSWORD` and kubeconfig import) or from the Sealos login flow, which upserts both automatically.
 
 ## Authenticated App Shell
 
@@ -44,6 +43,6 @@ When `?iframe=true` is present, the app renders the route outlet without the sta
 
 ## Standalone State Rules
 
-- `/setup` and `/login` should remain standalone and should not include the authenticated dashboard sidebar.
+- `/login` should remain standalone and should not include the authenticated dashboard sidebar.
 - `/login` must use the Kite logo and operator-focused copy for configuration, database, or authentication-service problems.
 - Full app navigation should appear only when the route actually allows the user to navigate authenticated resource workflows.

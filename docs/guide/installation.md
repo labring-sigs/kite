@@ -138,27 +138,14 @@ cloudDomain: example.com
 
 ## Verifying Installation
 
-After installation, you can access the dashboard to verify that Kite is deployed successfully. The expected interface is as follows:
+After installation, first-run bootstrap depends on the deployment mode:
+
+- **Sealos deployments**: open Kite from the Sealos desktop. The Sealos session signs you in automatically and registers your workspace cluster on first login, so no manual setup is required.
+- **Standalone deployments**: there is no setup wizard. Provide the initial administrator through `KITE_USERNAME`/`KITE_PASSWORD`, and when no clusters exist Kite imports them from `KUBECONFIG` (default `~/.kube/config`) at boot. Administrators can add more clusters later from the settings page.
 
 ::: tip
 If you need to configure Kite through environment variables, please refer to [Environment Variables](../config/env).
 :::
-
-![setup](../screenshots/setup.png)
-
-![setup](../screenshots/setup2.png)
-
-You can complete cluster setup according to the page prompts.
-
-### Quick Setup with In-Cluster Mode
-
-For the simplest setup, select **`in-cluster`** as the cluster type. This option automatically uses the service account credentials that Kite is running with inside the cluster, requiring no additional configuration:
-
-- **No kubeconfig needed**: Kite will use its own service account to access the Kubernetes API
-- **Automatic authentication**: Works out of the box with the default RBAC permissions
-- **Ideal for single-cluster deployments**: Perfect when Kite is managing the same cluster it's running in
-
-This is the recommended option for getting started quickly, especially in development or when Kite only needs to manage its own cluster.
 
 ## Uninstalling Kite
 

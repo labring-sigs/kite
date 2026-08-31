@@ -60,10 +60,6 @@ spec:
             - name: HOST
               value: {{ .Values.host }}
             {{- end }}
-            {{- if .Values.anonymousUserEnabled }}
-            - name: ANONYMOUS_USER_ENABLED
-              value: "true"
-            {{- end }}
             {{- if eq .Values.db.type "sqlite" }}
             - name: DB_TYPE
               value: sqlite

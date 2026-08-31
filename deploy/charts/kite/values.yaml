@@ -28,8 +28,6 @@ host: ''
 # If serving kite under a sub-path, set this value.
 basePath: ''
 
-anonymousUserEnabled: false
-
 # Ignored if using secret.existingSecret.
 jwtSecret: 'kite-default-jwt-secret-key-change-in-production'
 encryptKey: 'kite-default-encryption-key-change-in-production'

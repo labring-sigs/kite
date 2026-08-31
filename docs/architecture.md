@@ -12,10 +12,9 @@ Kite is a single Go service that serves a React application and exposes REST/Web
 ## Request Flow
 
 1. Browser requests load the embedded React app from `static/index.html`.
-2. React Router defines standalone `/setup` and `/login` routes, then protected app routes under `/`.
-3. `InitCheckRoute` calls `/api/v1/init_check`; uninitialized installs go to `/setup`.
-4. `ProtectedRoute` checks frontend auth state; missing sessions redirect to `/login?reason=unauthenticated`.
-5. Protected backend APIs run through `RequireAuth`, cluster middleware, and RBAC middleware before resource handlers.
+2. React Router defines a standalone `/login` route, then protected app routes under `/`.
+3. `ProtectedRoute` checks frontend auth state; missing sessions redirect to `/login?reason=unauthenticated`.
+4. Protected backend APIs run through `RequireAuth`, cluster middleware, and RBAC middleware before resource handlers.
 
 ## Auth And Session Model
 
@@ -23,7 +22,6 @@ Kite is a single Go service that serves a React application and exposes REST/Web
 - Backend interactive auth APIs still include password login, OAuth start/callback, Sealos login, logout, refresh, and current-user lookup.
 - The frontend `/login` route is not an interactive login surface. It is an operational fault page used when no usable access session can be established or an auth callback/session refresh fails.
 - Session state uses an `auth_token` cookie. `RequireAuth` accepts bearer tokens, API key tokens, or the cookie depending on request type.
-- Anonymous mode can bypass normal user auth when `ANONYMOUS_USER_ENABLED=true`, but this is not a production-safe default.
 
 ## Data Model
 
