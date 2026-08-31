@@ -504,6 +504,11 @@
         "description": "请从 Sealos 打开、登录 Sealos Desktop，或启用本地开发桥接插件。这个提示不会阻挡 bridge 开发。"
       }
     },
+    "sealosDesktopRequired": {
+      "title": "请从 Sealos Desktop 打开 Kite",
+      "description": "当前 Kite 部署仅接受从 Sealos 桌面发起的访问。请前往 Sealos Desktop 打开本应用，登录将自动完成。",
+      "hint": "如果你正是从 Sealos Desktop 打开的，会话通道可能尚未就绪，请刷新页面重试。"
+    },
     "operatorCheckTitle": "建议检查",
     "operatorCheckLabels": {
       "database": "数据库",
@@ -1134,54 +1139,6 @@
       "updated": "用户更新成功"
     }
   },
-  "initialization": {
-    "title": "初始化设置",
-    "welcome": "欢迎！让我们来设置您的 Kite Dashboard",
-    "subtitle": "完成以下步骤开始使用",
-    "description": "配置您的管理员用户并连接您的集群",
-    "step1": {
-      "title": "创建超级管理员用户",
-      "description": "如果您希望匿名使用，请将 `ANONYMOUS_USER_ENABLED` 环境变量设置为 true",
-      "username": "用户名",
-      "usernameRequired": "用户名 *",
-      "usernamePlaceholder": "输入管理员用户名",
-      "displayName": "显示名称",
-      "displayNamePlaceholder": "输入显示名称（可选）",
-      "password": "密码",
-      "passwordRequired": "密码 *",
-      "passwordPlaceholder": "输入密码",
-      "confirmPassword": "确认密码",
-      "confirmPasswordRequired": "确认密码 *",
-      "confirmPasswordPlaceholder": "确认密码",
-      "creating": "创建用户中...",
-      "createButton": "创建超级管理员用户",
-      "passwordMismatch": "密码不匹配",
-      "createSuccess": "超级管理员用户创建成功",
-      "createError": "创建用户失败"
-    },
-    "step2": {
-      "title": "导入 Kubernetes 集群",
-      "description": "从您的 kubeconfig 中导入 Kubernetes 集群",
-      "kubeconfig": "Kubeconfig 文件",
-      "kubeconfigRequired": "Kubeconfig 文件 *",
-      "kubeconfigPlaceholder": "在此粘贴您的 kubeconfig 文件内容...",
-      "kubeconfigHint": "您可以在 ~/.kube/config 找到您的 kubeconfig 文件，或从集群提供商处获取",
-      "pasteMode": "粘贴内容",
-      "fileMode": "上传文件",
-      "fileHint": "选择您的 kubeconfig 文件（通常位于 ~/.kube/config）",
-      "importing": "导入集群中...",
-      "importButton": "导入集群",
-      "importSuccess": "集群导入成功",
-      "importError": "导入集群失败",
-      "configRequired": "请提供 kubeconfig 文件",
-      "inClusterHint": "使用当前集群服务账户连接，无需额外 kubeconfig。",
-      "inClusterMode": "集群内模式"
-    },
-    "completion": {
-      "message": "即将为您跳转到仪表板...",
-      "title": "设置完成！"
-    }
-  },
   "resourceHistory": {
     "title": "资源历史",
     "id": "ID",
@@ -1803,5 +1760,10 @@
     "placeholders": {
       "selectChart": "选择 Chart..."
     }
+  },
+  "routeError": {
+    "title": "页面加载失败",
+    "description": "页面或其资源未能成功加载，可能是版本更新或网络问题导致。",
+    "reload": "刷新页面"
   }
 }

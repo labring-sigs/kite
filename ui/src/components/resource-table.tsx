@@ -157,7 +157,10 @@ export function ResourceTable<T>({
       pageSize: savedPageSize ? Number(savedPageSize) : 20,
     }
   })
-  const [refreshInterval, setRefreshInterval] = useState(5000)
+  // Default auto-refresh is 10s so it aligns with the backend summary-list
+  // cache TTL: a 5s poll mostly re-ran expensive list loads, while a 10s
+  // poll is served straight from the warm cache.
+  const [refreshInterval, setRefreshInterval] = useState(10000)
 
   const [selectedNamespace, setSelectedNamespace] = useState<
     string | undefined

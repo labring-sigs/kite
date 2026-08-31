@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import Editor from '@monaco-editor/react'
 import { IconCheck, IconEdit, IconLoader, IconX } from '@tabler/icons-react'
 import { formatHex } from 'culori'
 import * as yaml from 'js-yaml'
-import { editor as monacoEditor } from 'monaco-editor'
+// Type-only import: erased at compile time, keeps monaco out of this chunk.
+import type { editor as monacoEditor } from 'monaco-editor'
 
 import { ResourceType, ResourceTypeMap } from '@/types/api'
 import { cn } from '@/lib/utils'
+// Lazily-loaded editor wrapper; the monaco bundle loads on first render.
+import { MonacoEditor as Editor } from '@/lib/monaco-loader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 

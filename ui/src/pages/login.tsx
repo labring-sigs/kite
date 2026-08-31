@@ -6,6 +6,7 @@ import {
   Info,
   KeyRound,
   Loader2,
+  MonitorSmartphone,
   RefreshCcw,
   Server,
 } from 'lucide-react'
@@ -69,6 +70,20 @@ export function LoginPage() {
     searchParams.get('reason'),
     searchParams.get('error')
   )
+
+  // Sealos deployments only accept sessions launched from the Sealos
+  // desktop. When the SDK session channel is absent, this page becomes a
+  // dedicated notice instead of the operator fault page (and the backend
+  // never routes to /setup either): direct browser access can never
+  // establish a session here.
+  const sealosDesktopRequired = sealosSdkAccessStatus === 'unavailable'
+
+  // The desktop-required branch narrows sealosSdkAccessStatus via control
+  // flow, which would shrink the template-literal translation keys used for
+  // the SDK status box below and break the typed t() calls; this full-union
+  // copy keeps those key expressions exactly as they were.
+  const sdkStatusForKeys: typeof sealosSdkAccessStatus = sealosSdkAccessStatus
+
   const checks = [
     {
       icon: Database,
@@ -91,10 +106,69 @@ export function LoginPage() {
     return <Navigate to="/" replace />
   }
 
-  if (isLoading) {
+  // Keep the spinner while the SDK channel probe is in flight so the
+  // desktop-required notice cannot flash for users who actually did open
+  // Kite from the Sealos desktop.
+  if (isLoading || sealosSdkAccessStatus === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  // Non-desktop access to a Sealos-only deployment: render the entry notice
+  // with the same standalone shell (logo header + footer) as the fault page.
+  if (sealosDesktopRequired) {
+    return (
+      <div className="min-h-screen bg-muted/20">
+        <div className="flex min-h-screen flex-col">
+          <header className="flex h-[var(--header-height)] shrink-0 items-center border-b bg-background px-4 lg:px-6">
+            <div className="flex items-center gap-2">
+              <img src={Logo} className="h-8 w-8 dark:invert" alt="Kite" />
+              <div className="min-w-0">
+                <div className="text-base font-semibold leading-none">Kite</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {t('login.kubernetesDashboard')}
+                </div>
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <LanguageToggle />
+              <ModeToggle />
+            </div>
+          </header>
+
+          <main className="flex flex-1 items-center justify-center px-4 py-10 lg:px-6">
+            <div className="mx-auto w-full max-w-lg">
+              <div className="rounded-lg border bg-card p-8 text-center text-card-foreground shadow-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <MonitorSmartphone className="h-6 w-6" aria-hidden="true" />
+                </div>
+                <h1 className="mt-5 text-xl font-bold">
+                  {t('login.sealosDesktopRequired.title')}
+                </h1>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  {t('login.sealosDesktopRequired.description')}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {t('login.sealosDesktopRequired.hint')}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-6"
+                  onClick={() => window.location.reload()}
+                >
+                  <RefreshCcw aria-hidden="true" />
+                  {t('login.refresh')}
+                </Button>
+              </div>
+            </div>
+          </main>
+
+          <Footer />
+        </div>
       </div>
     )
   }
@@ -162,12 +236,12 @@ export function LoginPage() {
                             <div className="min-w-0">
                               <div className="text-sm font-medium text-foreground">
                                 {t(
-                                  `login.sealosSdkStatus.${sealosSdkAccessStatus}.title`
+                                  `login.sealosSdkStatus.${sdkStatusForKeys}.title`
                                 )}
                               </div>
                               <div className="mt-1 text-xs leading-5 text-muted-foreground">
                                 {t(
-                                  `login.sealosSdkStatus.${sealosSdkAccessStatus}.description`
+                                  `login.sealosSdkStatus.${sdkStatusForKeys}.description`
                                 )}
                               </div>
                             </div>

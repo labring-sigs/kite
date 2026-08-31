@@ -643,6 +643,9 @@ export interface Cluster {
   prometheusURL?: string
   namespaceScoped?: boolean
   namespace?: string
+  // Surfaced by /api/v1/clusters so the dashboard can start Prometheus
+  // queries before the overview response arrives.
+  prometheusEnabled?: boolean
   error?: string
 }
 

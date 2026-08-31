@@ -90,7 +90,6 @@ export function GeneralManagement() {
       queryClient.invalidateQueries({
         predicate: (query) =>
           query.queryKey[0] === 'general-setting' ||
-          query.queryKey[0] === 'init-check' ||
           query.queryKey[0] === 'auth',
       })
       toast.success(

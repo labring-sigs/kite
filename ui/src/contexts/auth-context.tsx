@@ -400,7 +400,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           } else if (data?.token_type === 'kite-cookie') {
             writeAuthToken(null)
           }
-          await queryClient.invalidateQueries({ queryKey: ['init-check'] })
           await queryClient.invalidateQueries({ queryKey: ['clusters'] })
           await queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
           await queryClient.refetchQueries({
@@ -422,13 +421,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await queryClient.invalidateQueries({
               predicate: (query) => {
                 const key = query.queryKey[0] as string
-                return ![
-                  'user',
-                  'auth',
-                  'clusters',
-                  'cluster-list',
-                  'init-check',
-                ].includes(key)
+                return !['user', 'auth', 'clusters', 'cluster-list'].includes(
+                  key
+                )
               },
               // Avoid immediate refetch with stale cluster header during workspace switch.
               refetchType: 'none',
@@ -633,8 +628,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const initAuth = async () => {
       setIsLoading(true)
       try {
-        const sealosEnabled = await loadProviders()
-        const currentUser = await checkAuthInternal()
+        // loadProviders and checkAuthInternal hit independent endpoints and
+        // write disjoint state, so they run in parallel; this removes one
+        // full round-trip from the blocking auth gate on every page load.
+        const [sealosEnabled, currentUser] = await Promise.all([
+          loadProviders(),
+          checkAuthInternal(),
+        ])
         await Promise.all([
           syncSealosSession(currentUser, sealosEnabled),
           syncSealosLanguage(currentUser, sealosEnabled),

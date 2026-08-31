@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import Editor from '@monaco-editor/react'
-import { editor as monacoEditor } from 'monaco-editor'
+// Type-only import: erased at compile time, keeps monaco out of this chunk.
+import type { editor as monacoEditor } from 'monaco-editor'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAppearance } from '@/components/appearance-provider'
+// Lazily-loaded editor wrapper; the monaco bundle loads on first render.
+import { MonacoEditor as Editor } from '@/lib/monaco-loader'
 
 interface TextViewerProps {
   value: string

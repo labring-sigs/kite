@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Editor, { OnMount } from '@monaco-editor/react'
+import type { OnMount } from '@monaco-editor/react'
 import {
   IconClearAll,
   IconDownload,
@@ -13,6 +13,9 @@ import {
 import { Container, Pod } from 'kubernetes-types/core/v1'
 import type { editor } from 'monaco-editor'
 import { useTranslation } from 'react-i18next'
+
+// Lazily-loaded editor wrapper; the monaco bundle loads on first render.
+import { MonacoEditor as Editor } from '@/lib/monaco-loader'
 
 import { TERMINAL_THEMES, TerminalTheme } from '@/types/themes'
 import {

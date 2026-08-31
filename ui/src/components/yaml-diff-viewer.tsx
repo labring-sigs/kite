@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
-import { DiffEditor } from '@monaco-editor/react'
 import { formatHex } from 'culori'
 import * as yaml from 'js-yaml'
-import { editor as monacoEditor } from 'monaco-editor'
+// Type-only import: erased at compile time, keeps monaco out of this chunk.
+import type { editor as monacoEditor } from 'monaco-editor'
 import { useTranslation } from 'react-i18next'
 
 import { dumpKubernetesYaml } from '@/lib/yaml'
+// Lazily-loaded diff editor wrapper; the monaco bundle loads on first render.
+import { MonacoDiffEditor as DiffEditor } from '@/lib/monaco-loader'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

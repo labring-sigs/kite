@@ -21,7 +21,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          monaco: ['monaco-editor'],
+          // NOTE: monaco is intentionally absent. Forcing it into a manual
+          // chunk also dragged Vite's dynamic-import preload helper into
+          // that chunk, and the entry's static edge to the helper made the
+          // browser preload all ~3.7MB of monaco at startup. Monaco is only
+          // reached through dynamic imports (lib/monaco-loader), so Rollup
+          // splits it into an on-demand chunk by itself.
           lodash: ['lodash'],
           recharts: ['recharts'],
         },

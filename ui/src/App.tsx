@@ -1,12 +1,10 @@
 import './App.css'
 
-import { ReactNode, useEffect } from 'react'
+import { lazy, ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, useSearchParams } from 'react-router-dom'
 
-import { AIChatbox, StandaloneAIChatbox } from './components/ai-chat/ai-chatbox'
 import { AppSidebar } from './components/app-sidebar'
-import { FloatingTerminal } from './components/floating-terminal'
 import { GlobalSearch } from './components/global-search'
 import {
   GlobalSearchProvider,
@@ -20,6 +18,25 @@ import { ClusterProvider } from './contexts/cluster-context'
 import { TerminalProvider, useTerminal } from './contexts/terminal-context'
 import { useCluster } from './hooks/use-cluster'
 import { apiClient } from './lib/api-client'
+
+// The AI chatbox pulls in react-markdown and friends, and the floating
+// terminal pulls in xterm.js plus its addons. Both are closed by default, so
+// they are loaded on demand instead of weighing down the entry chunk.
+const AIChatbox = lazy(() =>
+  import('./components/ai-chat/ai-chatbox').then((m) => ({
+    default: m.AIChatbox,
+  }))
+)
+const StandaloneAIChatbox = lazy(() =>
+  import('./components/ai-chat/ai-chatbox').then((m) => ({
+    default: m.StandaloneAIChatbox,
+  }))
+)
+const FloatingTerminal = lazy(() =>
+  import('./components/floating-terminal').then((m) => ({
+    default: m.FloatingTerminal,
+  }))
+)
 
 function ClusterGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
@@ -81,8 +98,16 @@ function AppContent() {
         </SidebarInset>
       </SidebarProvider>
       <GlobalSearch open={isOpen} onOpenChange={closeSearch} />
-      {isTerminalOpen ? <FloatingTerminal /> : null}
-      <AIChatbox />
+      {isTerminalOpen ? (
+        // The terminal chunk only downloads when the terminal is first
+        // opened; while it loads nothing is rendered (the panel appears).
+        <Suspense fallback={null}>
+          <FloatingTerminal />
+        </Suspense>
+      ) : null}
+      <Suspense fallback={null}>
+        <AIChatbox />
+      </Suspense>
       <Toaster />
     </>
   )
@@ -114,7 +139,17 @@ export function StandaloneAIChatApp() {
   return (
     <AppProviders>
       <ClusterGate>
-        <StandaloneAIChatbox />
+        {/* The standalone route exists for the chat UI, so its chunk is
+            expected to load here; a spinner keeps the wait visible. */}
+        <Suspense
+          fallback={
+            <div className="flex h-screen items-center justify-center">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+            </div>
+          }
+        >
+          <StandaloneAIChatbox />
+        </Suspense>
       </ClusterGate>
     </AppProviders>
   )

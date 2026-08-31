@@ -1,6 +1,8 @@
-import { Editor } from '@monaco-editor/react'
 import { formatHex } from 'culori'
 
+// MonacoEditor is the lazily-loaded wrapper from lib/monaco-loader: the
+// editor bundle is only fetched when this component actually renders.
+import { MonacoEditor as Editor } from '@/lib/monaco-loader'
 import { useAppearance } from './appearance-provider'
 
 interface SimpleYamlEditorProps {

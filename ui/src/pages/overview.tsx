@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useOverview, useResourceUsageHistory } from '@/lib/api'
+import { useCluster } from '@/hooks/use-cluster'
 import NetworkUsageChart from '@/components/chart/network-usage-chart'
 import ResourceUtilizationChart from '@/components/chart/resource-utilization'
 import { ClusterStatsCards } from '@/components/cluster-stats-cards'
@@ -12,13 +13,21 @@ export function Overview() {
   const { t } = useTranslation()
   const [timeRange] = useState('30m')
   const { data: overview, isLoading, error, isError } = useOverview()
+  const { currentClusterInfo } = useCluster()
+
+  // The clusters list (loaded before this page renders) already knows
+  // whether Prometheus is configured, so the usage-history query can start
+  // in parallel with the overview request instead of waiting for it; the
+  // overview flag remains as a fallback for older backends.
+  const prometheusEnabled =
+    currentClusterInfo?.prometheusEnabled ?? overview?.prometheusEnabled ?? false
 
   const {
     data: resourceUsage,
     isLoading: isLoadingResourceUsage,
     error: errorResourceUsage,
   } = useResourceUsageHistory(timeRange, {
-    enabled: overview?.prometheusEnabled ?? false,
+    enabled: prometheusEnabled,
   })
   const resourceUsageError =
     resourceUsage && resourceUsage.cpu.length + resourceUsage.memory.length > 0
