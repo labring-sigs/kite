@@ -11,6 +11,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 )
 
 var builtinSidebarCRDNames = []string{
@@ -19,6 +20,13 @@ var builtinSidebarCRDNames = []string{
 	"rabbitmqclusters.rabbitmq.com",
 	"elasticsearches.elasticsearch.k8s.elastic.co",
 	"clusters.apps.kubeblocks.io",
+	// SealosNetworkPolicy is namespaced and intended to be visible to every
+	// workspace user.
+	"sealosnetworkpolicies.networking.sealos.io",
+	// CiliumEgressGatewayPolicy is cluster-scoped; workspace credentials
+	// usually cannot read it, so it only shows up for admin kubeconfigs (the
+	// handler skips entries the caller cannot read instead of failing).
+	"ciliumegressgatewaypolicies.cilium.io",
 }
 
 type sidebarCRDVersion struct {
@@ -58,8 +66,11 @@ func ListBuiltinSidebarCRDs(c *gin.Context) {
 }
 
 // listBuiltinSidebarCRDItems resolves every builtin CRD concurrently. The
-// lookups are independent, and missing CRDs are simply skipped; results keep
-// the declaration order via their index slots.
+// lookups are independent; CRDs that are not installed (NotFound) or not
+// readable by the caller's credentials (Forbidden/Unauthorized, e.g. the
+// cluster-scoped CiliumEgressGatewayPolicy for namespace-scoped workspace
+// users) are skipped instead of failing the whole sidebar response. Results
+// keep the declaration order via their index slots.
 func listBuiltinSidebarCRDItems(ctx context.Context, cs *cluster.ClientSet) ([]sidebarCRDInfo, error) {
 	results := make([]*sidebarCRDInfo, len(builtinSidebarCRDNames))
 
@@ -70,6 +81,12 @@ func listBuiltinSidebarCRDItems(ctx context.Context, cs *cluster.ClientSet) ([]s
 			if err := cs.K8sClient.Get(gctx, types.NamespacedName{Name: crdName}, &crd); err != nil {
 				if apierrors.IsNotFound(err) {
 					// CRD not installed on this cluster: leave the slot empty.
+					return nil
+				}
+				if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+					// The credentials may not see this CRD (admin-only entry);
+					// hide it for this caller rather than breaking the sidebar.
+					klog.V(1).Infof("sidebar: skip builtin CRD %s for cluster %s due to permissions: %v", crdName, cs.Name, err)
 					return nil
 				}
 				return err
