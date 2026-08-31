@@ -140,12 +140,18 @@ const BUILTIN_CR_GROUP_KEY = 'sidebar.groups.cr'
 const BUILTIN_CR_GROUP_ID = getSidebarGroupID(BUILTIN_CR_GROUP_KEY)
 const APPLICATION_GROUP_KEY = 'sidebar.groups.application'
 const APPLICATION_GROUP_ID = getSidebarGroupID(APPLICATION_GROUP_KEY)
+// Candidate builtin CR sidebar entries. An entry is only shown when the
+// backend's builtin-CRD discovery also returns it (installed on the cluster
+// and readable by the caller), so admin-only CRDs such as the Cilium egress
+// gateway policy stay hidden for namespace-scoped workspace users.
 const BUILTIN_CRD_NAMES = [
   'apps.app.sealos.io',
   'devboxes.devbox.sealos.io',
   'rabbitmqclusters.rabbitmq.com',
   'elasticsearches.elasticsearch.k8s.elastic.co',
   'clusters.apps.kubeblocks.io',
+  'sealosnetworkpolicies.networking.sealos.io',
+  'ciliumegressgatewaypolicies.cilium.io',
 ] as const
 const BUILTIN_CRD_NAME_SET = new Set<string>(BUILTIN_CRD_NAMES)
 
