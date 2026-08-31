@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -82,6 +83,31 @@ func (h *PromHandler) GetResourceUsageHistory(c *gin.Context) {
 	}
 
 	instance := c.Query("instance")
+
+	// Prometheus range queries are the most expensive part of the dashboard
+	// (up to two batches of four serialized round-trips on label fallback),
+	// so the serialized response is cached per cluster/user/duration/instance
+	// and refreshed in the background once it goes stale.
+	body, state, err := resourceUsageHistoryCache.Serve(ctx, resourceUsageHistoryCacheKey(cs, user, duration, instance), resourceUsageRefreshTimeout, func(loadCtx context.Context) ([]byte, error) {
+		history, err := h.loadResourceUsageHistory(loadCtx, cs, user, instance, duration)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(history)
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get resource usage history: %v", err)})
+		return
+	}
+	c.Header(resourceUsageHistoryHeader, string(state))
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+}
+
+// loadResourceUsageHistory performs the actual Prometheus lookups behind the
+// response cache: it resolves namespace quota options, tries the "instance"
+// node label first and falls back to the "node" label, and degrades
+// Prometheus-forbidden setups to an empty (but valid) history payload.
+func (h *PromHandler) loadResourceUsageHistory(ctx context.Context, cs *cluster.ClientSet, user model.User, instance, duration string) (*prometheus.ResourceUsageHistory, error) {
 	options := prometheus.ResourceUsageOptions{}
 	if cs.NamespaceScoped && cs.Namespace != "" {
 		options.Namespace = cs.Namespace
@@ -107,17 +133,15 @@ func (h *PromHandler) GetResourceUsageHistory(c *gin.Context) {
 				klog.Warningf("resource usage history forbidden by prometheus, return empty history: cluster=%s duration=%s instance=%s namespace=%s err=%v", cs.Name, duration, instance, options.Namespace, err)
 				resourceUsageHistory = newEmptyResourceUsageHistory()
 				applyResourceUsageHistoryMetadata(resourceUsageHistory, options)
-				c.JSON(http.StatusOK, resourceUsageHistory)
-				return
+				return resourceUsageHistory, nil
 			}
 			klog.Warningf("resource usage history query failed: cluster=%s duration=%s instance=%s namespace=%s err=%v", cs.Name, duration, instance, options.Namespace, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get resource usage history: %v", err)})
-			return
+			return nil, err
 		}
 	}
 	applyResourceUsageHistoryMetadata(resourceUsageHistory, options)
 
-	c.JSON(http.StatusOK, resourceUsageHistory)
+	return resourceUsageHistory, nil
 }
 
 func newEmptyResourceUsageHistory() *prometheus.ResourceUsageHistory {

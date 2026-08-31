@@ -67,14 +67,6 @@ func GetUserByID(id uint64) (*User, error) {
 	return &user, nil
 }
 
-func GetAnonymousUser() *User {
-	user := &User{}
-	if err := DB.Where("username = ? AND provider = ?", "anonymous", "Anonymous").First(user).Error; err != nil {
-		return nil
-	}
-	return user
-}
-
 func FindWithSubOrUpsertUser(user *User) error {
 	if user.Sub == "" {
 		return errors.New("user sub is empty")
@@ -93,6 +85,8 @@ func FindWithSubOrUpsertUser(user *User) error {
 	user.ID = existingUser.ID
 	user.CreatedAt = existingUser.CreatedAt
 	user.SidebarPreference = existingUser.SidebarPreference
+	// The upsert overwrites the whole row, so any cached copy is now stale.
+	defer invalidateUserByIDCache(uint64(user.ID))
 	return DB.Save(user).Error
 }
 
@@ -169,22 +163,27 @@ func ListUsers(limit int, offset int, search string, sortBy string, sortOrder st
 func LoginUser(u *User) error {
 	now := time.Now()
 	u.LastLoginAt = &now
+	// The save touches the row, so the cached copy must be re-read next time.
+	defer invalidateUserByIDCache(uint64(u.ID))
 	return DB.Save(u).Error
 }
 
 // DeleteUserByID removes a user by ID
 func DeleteUserByID(id uint) error {
+	defer invalidateUserByIDCache(uint64(id))
 	_ = DB.Where("operator_id = ?", id).Delete(&ResourceHistory{}).Error
 	return DB.Delete(&User{}, id).Error
 }
 
 // UpdateUser saves provided user (expects ID set)
 func UpdateUser(user *User) error {
+	defer invalidateUserByIDCache(uint64(user.ID))
 	return DB.Save(user).Error
 }
 
 // ResetPasswordByID sets a new password (hashed) for user with given id
 func ResetPasswordByID(id uint, plainPassword string) error {
+	defer invalidateUserByIDCache(uint64(id))
 	var u User
 	if err := DB.First(&u, id).Error; err != nil {
 		return err
@@ -199,6 +198,9 @@ func ResetPasswordByID(id uint, plainPassword string) error {
 
 // SetUserEnabled sets enabled flag for a user
 func SetUserEnabled(id uint, enabled bool) error {
+	// Enable/disable must take effect immediately for in-flight sessions, so
+	// the cached row cannot be served after this update.
+	defer invalidateUserByIDCache(uint64(id))
 	return DB.Model(&User{}).Where("id = ?", id).Update("enabled", enabled).Error
 }
 
@@ -233,22 +235,3 @@ func ListAPIKeyUsers() (users []User, err error) {
 	err = DB.Order("id desc").Where("provider = ?", common.APIKeyProvider).Find(&users).Error
 	return users, err
 }
-
-var (
-	AnonymousUser = User{
-		Model: Model{
-			ID: 0,
-		},
-		Username: "anonymous",
-		Provider: "Anonymous",
-		Roles: []common.Role{
-			{
-				Name:       "admin",
-				Clusters:   []string{"*"},
-				Resources:  []string{"*"},
-				Namespaces: []string{"*"},
-				Verbs:      []string{"*"},
-			},
-		},
-	}
-)

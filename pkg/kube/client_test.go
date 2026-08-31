@@ -40,3 +40,19 @@ func TestNewClientHonorsDisableCacheEnvironment(t *testing.T) {
 	assert.NotNil(t, client.Client)
 	assert.NotNil(t, client.ClientSet)
 }
+
+// TestClusterScopedCacheExclusionsResolveAgainstScheme guarantees every type
+// in the namespace-scoped cache bypass list is registered in the runtime
+// scheme. An unregistered type would make the delegating client fail at
+// construction time for every namespace-scoped cluster, so this guards the
+// invariant without needing a live API server.
+func TestClusterScopedCacheExclusionsResolveAgainstScheme(t *testing.T) {
+	exclusions := clusterScopedCacheExclusions()
+	require.NotEmpty(t, exclusions)
+
+	for _, obj := range exclusions {
+		gvks, _, err := runtimeScheme.ObjectKinds(obj)
+		require.NoError(t, err, "excluded type %T must be registered in the scheme", obj)
+		require.NotEmpty(t, gvks, "excluded type %T must have a GVK", obj)
+	}
+}

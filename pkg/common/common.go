@@ -40,8 +40,6 @@ var (
 
 	AllNamespaces = "_all"
 
-	AnonymousUserEnabled = false
-
 	CookieExpirationSeconds = 2 * JWTExpirationSeconds // double jwt
 
 	DisableGZIP         = true
@@ -127,10 +125,6 @@ func LoadEnvs() {
 		klog.Warningf("KITE_ENCRYPT_KEY is not set, using default key, this is not secure for production!")
 	}
 
-	if v := os.Getenv("ANONYMOUS_USER_ENABLED"); v == "true" {
-		AnonymousUserEnabled = true
-		klog.Warningf("Anonymous user is enabled, this is not secure for production!")
-	}
 	if v := os.Getenv("HOST"); v != "" {
 		Host = v
 	}

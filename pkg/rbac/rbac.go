@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
@@ -89,6 +90,46 @@ func findRole(name string) *common.Role {
 	return nil
 }
 
+// compiledPattern is the memoized result of compiling one role pattern.
+// err is retained so an invalid pattern is reported once instead of on every
+// check.
+type compiledPattern struct {
+	re  *regexp.Regexp
+	err error
+}
+
+// compiledPatternCache memoizes compiled role patterns. match() runs for
+// every RBAC check and for every item in filtered lists, so compiling the
+// same handful of role patterns on each call was significant wasted CPU.
+// Role definitions are bounded and rarely change; entries are dropped when
+// the RBAC config reloads (see ClearCompiledPatternCache).
+var compiledPatternCache sync.Map
+
+// matchPattern compiles (once) and matches a single role pattern against val.
+func matchPattern(pattern, val string) bool {
+	if cached, ok := compiledPatternCache.Load(pattern); ok {
+		cp := cached.(compiledPattern)
+		return cp.err == nil && cp.re.MatchString(val)
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		klog.Error(err)
+	}
+	compiledPatternCache.Store(pattern, compiledPattern{re: re, err: err})
+	return err == nil && re.MatchString(val)
+}
+
+// ClearCompiledPatternCache drops all memoized patterns. It is called when
+// the RBAC config is reloaded so edited roles take effect without waiting
+// for process restart.
+func ClearCompiledPatternCache() {
+	compiledPatternCache.Range(func(key, _ any) bool {
+		compiledPatternCache.Delete(key)
+		return true
+	})
+}
+
 func match(list []string, val string) bool {
 	for _, v := range list {
 		if len(v) > 1 && strings.HasPrefix(v, "!") {
@@ -100,12 +141,7 @@ func match(list []string, val string) bool {
 			return true
 		}
 
-		re, err := regexp.Compile(v)
-		if err != nil {
-			klog.Error(err)
-			continue
-		}
-		if re.MatchString(val) {
+		if matchPattern(v, val) {
 			return true
 		}
 	}

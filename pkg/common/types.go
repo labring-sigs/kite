@@ -43,18 +43,17 @@ type PasswordLoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-type ImportClustersRequest struct {
-	Config    string `json:"config"`
-	InCluster bool   `json:"inCluster"`
-}
-
 type ClusterInfo struct {
 	Name            string `json:"name"`
 	Version         string `json:"version"`
 	IsDefault       bool   `json:"isDefault"`
 	NamespaceScoped bool   `json:"namespaceScoped,omitempty"`
 	Namespace       string `json:"namespace,omitempty"`
-	Error           string `json:"error,omitempty"`
+	// PrometheusEnabled tells the UI whether this cluster has a working
+	// Prometheus client, so dashboard charts can fire their queries in
+	// parallel with the overview request instead of waiting for it.
+	PrometheusEnabled bool   `json:"prometheusEnabled,omitempty"`
+	Error             string `json:"error,omitempty"`
 }
 
 type MetricsCell struct {

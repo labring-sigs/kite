@@ -5,10 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	nodev1 "k8s.io/api/node/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -102,6 +110,49 @@ type K8sClient struct {
 
 type ClientOptions struct {
 	DisableCache bool
+	// CacheNamespaces restricts the informer cache to the given namespaces.
+	// It is used for namespace-scoped kubeconfig contexts (e.g. Sealos
+	// workspaces): namespaced reads are served from the local cache instead
+	// of hitting the API server on every request, while cluster-scoped types
+	// (which cannot be watched per-namespace) bypass the cache and keep
+	// using direct API calls. Ignored when the cache is disabled.
+	CacheNamespaces []string
+}
+
+// clusterScopedCacheExclusions lists the registered cluster-scoped types that
+// must bypass a namespace-scoped informer cache: a per-namespace cache cannot
+// watch cluster-scoped objects, and informer creation for them would fail.
+// These reads behave exactly as they did when the whole cache was disabled —
+// they go straight to the API server and succeed or fail with the caller's
+// RBAC permissions.
+//
+// If a cluster-scoped type is ever missing here, the failure mode is a
+// descriptive "cannot watch cluster-scoped resource with namespace-scoped
+// cache" error on that specific read, never silent data corruption.
+func clusterScopedCacheExclusions() []client.Object {
+	return []client.Object{
+		&corev1.Node{},
+		&corev1.Namespace{},
+		&corev1.PersistentVolume{},
+		&corev1.ComponentStatus{},
+		&rbacv1.ClusterRole{},
+		&rbacv1.ClusterRoleBinding{},
+		&storagev1.StorageClass{},
+		&storagev1.VolumeAttachment{},
+		&storagev1.CSIDriver{},
+		&storagev1.CSINode{},
+		&networkingv1.IngressClass{},
+		&schedulingv1.PriorityClass{},
+		&nodev1.RuntimeClass{},
+		&admissionregistrationv1.MutatingWebhookConfiguration{},
+		&admissionregistrationv1.ValidatingWebhookConfiguration{},
+		&admissionregistrationv1.ValidatingAdmissionPolicy{},
+		&admissionregistrationv1.ValidatingAdmissionPolicyBinding{},
+		&certificatesv1.CertificateSigningRequest{},
+		&apiextensionsv1.CustomResourceDefinition{},
+		&gatewayapiv1.GatewayClass{},
+		&metricsv1.NodeMetrics{},
+	}
 }
 
 // NewClient creates a K8sClient from a rest.Config
@@ -138,16 +189,39 @@ func NewClientWithOptions(config *rest.Config, options ClientOptions) (*K8sClien
 			return nil, fmt.Errorf("failed to create client: %w", err)
 		}
 	} else {
+		cacheOptions := cache.Options{
+			DefaultWatchErrorHandler: func(ctx context.Context, r *toolscache.Reflector, err error) {
+			},
+		}
+		// clientOptions carries the cache bypass list; it stays empty for a
+		// cluster-wide cache so behavior is identical to before.
+		clientOptions := client.Options{}
+
+		// Build the namespace restriction for namespace-scoped clusters
+		// (Sealos workspaces). With DefaultNamespaces set, every namespaced
+		// informer only watches the workspace namespace, and cluster-scoped
+		// types are excluded from the cache via DisableFor.
+		defaultNamespaces := map[string]cache.Config{}
+		for _, ns := range options.CacheNamespaces {
+			if ns = strings.TrimSpace(ns); ns != "" {
+				defaultNamespaces[ns] = cache.Config{}
+			}
+		}
+		if len(defaultNamespaces) > 0 {
+			cacheOptions.DefaultNamespaces = defaultNamespaces
+			clientOptions.Cache = &client.CacheOptions{
+				DisableFor: clusterScopedCacheExclusions(),
+			}
+		}
+
 		mgr, err := manager.New(config, manager.Options{
 			Scheme:         runtimeScheme,
 			LeaderElection: false,
 			Metrics: metricsserver.Options{
 				BindAddress: "0", // Disable metrics server
 			},
-			Cache: cache.Options{
-				DefaultWatchErrorHandler: func(ctx context.Context, r *toolscache.Reflector, err error) {
-				},
-			},
+			Cache:  cacheOptions,
+			Client: clientOptions,
 		})
 		if err != nil {
 			cancel()

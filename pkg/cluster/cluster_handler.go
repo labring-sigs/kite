@@ -2,18 +2,15 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
 	"github.com/zxh326/kite/pkg/rbac"
 	"gorm.io/gorm"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func (cm *ClusterManager) GetClusters(c *gin.Context) {
@@ -25,11 +22,12 @@ func (cm *ClusterManager) GetClusters(c *gin.Context) {
 			continue
 		}
 		result = append(result, common.ClusterInfo{
-			Name:            name,
-			Version:         cluster.Version,
-			IsDefault:       name == snapshot.defaultContext,
-			NamespaceScoped: cluster.NamespaceScoped,
-			Namespace:       cluster.Namespace,
+			Name:              name,
+			Version:           cluster.Version,
+			IsDefault:         name == snapshot.defaultContext,
+			NamespaceScoped:   cluster.NamespaceScoped,
+			Namespace:         cluster.Namespace,
+			PrometheusEnabled: cluster.PromClient != nil,
 		})
 	}
 	for name, errMsg := range snapshot.errors {
@@ -233,59 +231,4 @@ func (cm *ClusterManager) DeleteCluster(c *gin.Context) {
 	cm.TriggerSyncForCluster(cluster.Name)
 
 	c.JSON(http.StatusOK, gin.H{"message": "cluster deleted successfully"})
-}
-
-func (cm *ClusterManager) ImportClustersFromKubeconfig(c *gin.Context) {
-	var clusterReq common.ImportClustersRequest
-	if err := c.ShouldBindJSON(&clusterReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if !clusterReq.InCluster && clusterReq.Config == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config is required when inCluster is false"})
-		return
-	}
-
-	cc, err := model.CountClusters()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if cc > 0 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "import not allowed when clusters exist"})
-		return
-	}
-
-	if clusterReq.InCluster {
-		// In-cluster config
-		cluster := &model.Cluster{
-			Name:        "in-cluster",
-			InCluster:   true,
-			Description: "Kubernetes in-cluster config",
-			IsDefault:   true,
-			Enable:      true,
-		}
-		if err := model.AddCluster(cluster); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		cm.TriggerSyncForCluster(cluster.Name)
-		// wait for sync to complete
-		time.Sleep(1 * time.Second)
-		c.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("imported %d clusters successfully", 1)})
-		return
-	}
-
-	kubeconfig, err := clientcmd.Load([]byte(clusterReq.Config))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	importedCount := ImportClustersFromKubeconfig(kubeconfig)
-	cm.TriggerSync()
-	// wait for sync to complete
-	time.Sleep(1 * time.Second)
-	c.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("imported %d clusters successfully", importedCount)})
 }

@@ -52,12 +52,15 @@ func Test_clientOptionsForContextNamespace(t *testing.T) {
 		common.NamespaceScopeExemptNamespaces = originalExempt
 	})
 
-	t.Run("regular namespace disables informer cache", func(t *testing.T) {
+	t.Run("regular namespace gets a namespace-scoped informer cache", func(t *testing.T) {
 		common.NamespaceScopeExemptNamespaces = map[string]struct{}{}
 
 		options := clientOptionsForContextNamespace(" ns-a ")
 
-		assert.True(t, options.DisableCache)
+		// The cache is no longer disabled; it is restricted to the context
+		// namespace instead.
+		assert.False(t, options.DisableCache)
+		assert.Equal(t, []string{"ns-a"}, options.CacheNamespaces)
 	})
 
 	t.Run("exempt namespace keeps default cache behavior", func(t *testing.T) {
@@ -68,6 +71,7 @@ func Test_clientOptionsForContextNamespace(t *testing.T) {
 		options := clientOptionsForContextNamespace(" NS-ADMIN ")
 
 		assert.False(t, options.DisableCache)
+		assert.Empty(t, options.CacheNamespaces)
 	})
 
 	t.Run("empty namespace keeps default cache behavior", func(t *testing.T) {
@@ -76,6 +80,7 @@ func Test_clientOptionsForContextNamespace(t *testing.T) {
 		options := clientOptionsForContextNamespace("")
 
 		assert.False(t, options.DisableCache)
+		assert.Empty(t, options.CacheNamespaces)
 	})
 }
 

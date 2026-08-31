@@ -275,3 +275,60 @@ func TestCanAccess(t *testing.T) {
 		})
 	}
 }
+
+// TestMatchPreservesSemantics locks in the behavior of match() after regex
+// compilation was memoized: exact, wildcard, negation and regex rules must
+// behave exactly as before.
+func TestMatchPreservesSemantics(t *testing.T) {
+	tests := []struct {
+		name string
+		list []string
+		val  string
+		want bool
+	}{
+		{name: "wildcard matches anything", list: []string{"*"}, val: "pods", want: true},
+		{name: "exact match", list: []string{"pods"}, val: "pods", want: true},
+		{name: "no match", list: []string{"pods"}, val: "nodes", want: false},
+		{name: "negation blocks exact value", list: []string{"!secrets", "*"}, val: "secrets", want: false},
+		{name: "negation keeps other values", list: []string{"!secrets", "*"}, val: "pods", want: true},
+		{name: "regex pattern match", list: []string{"^team-.*"}, val: "team-a", want: true},
+		{name: "regex pattern mismatch", list: []string{"^team-.*"}, val: "other", want: false},
+		{name: "invalid regex never matches", list: []string{"["}, val: "anything", want: false},
+		{name: "empty list never matches", list: []string{}, val: "pods", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Run twice so both the compile-once path and the memoized path
+			// are exercised and must agree.
+			if got := match(tc.list, tc.val); got != tc.want {
+				t.Fatalf("match(%v, %q) = %v, want %v", tc.list, tc.val, got, tc.want)
+			}
+			if got := match(tc.list, tc.val); got != tc.want {
+				t.Fatalf("memoized match(%v, %q) = %v, want %v", tc.list, tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClearCompiledPatternCache ensures memoized patterns are dropped, which
+// is how role edits propagate after a config reload.
+func TestClearCompiledPatternCache(t *testing.T) {
+	pattern := "^cached-.*"
+	if !matchPattern(pattern, "cached-value") {
+		t.Fatalf("expected pattern to match before clearing")
+	}
+	if _, ok := compiledPatternCache.Load(pattern); !ok {
+		t.Fatalf("expected pattern to be memoized")
+	}
+
+	ClearCompiledPatternCache()
+
+	if _, ok := compiledPatternCache.Load(pattern); ok {
+		t.Fatalf("expected pattern cache to be cleared")
+	}
+	// Matching must still work after the clear (it recompiles lazily).
+	if !matchPattern(pattern, "cached-value") {
+		t.Fatalf("expected pattern to match after clearing")
+	}
+}

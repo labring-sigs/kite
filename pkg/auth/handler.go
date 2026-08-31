@@ -250,7 +250,10 @@ func (h *AuthHandler) RequireAPIKeyAuth(c *gin.Context, token string) {
 		c.Abort()
 		return
 	}
-	apikey, err := model.GetUserByID(dbID)
+	// Use the short-lived user cache: API-key requests also run this lookup
+	// on every call. Note LoginUser below invalidates the entry again, so
+	// the cache mainly collapses concurrent bursts for the same key.
+	apikey, err := model.GetUserByIDCached(dbID)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid API key",
@@ -272,17 +275,6 @@ func (h *AuthHandler) RequireAPIKeyAuth(c *gin.Context, token string) {
 
 func (h *AuthHandler) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if common.AnonymousUserEnabled {
-			u := model.GetAnonymousUser()
-			if u == nil {
-				c.Set("user", model.AnonymousUser)
-			} else {
-				u.Roles = model.AnonymousUser.Roles
-				c.Set("user", *u)
-			}
-			c.Next()
-			return
-		}
 		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 		var tokenString string
 		// bot token
@@ -334,7 +326,10 @@ func (h *AuthHandler) RequireAuth() gin.HandlerFunc {
 				return
 			}
 		}
-		user, err := model.GetUserByID(uint64(claims.UserID))
+		// Every authenticated request lands here; the short-lived user cache
+		// turns the per-request database read into an in-memory lookup for
+		// bursts while user mutations still invalidate it immediately.
+		user, err := model.GetUserByIDCached(uint64(claims.UserID))
 		if err != nil || !user.Enabled {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "user not found",

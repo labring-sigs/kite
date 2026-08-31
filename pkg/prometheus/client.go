@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -116,37 +117,60 @@ func (c *Client) GetResourceUsageHistory(ctx context.Context, instance string, d
 	start := now.Add(-timeRange)
 
 	cpuQuery, memoryQuery, networkInQuery, networkOutQuery := buildResourceUsageQueries(instance, nodeLabel, options)
-	var err error
 
-	cpuData := []UsageDataPoint{}
-	if cpuQuery != "" {
-		// Query CPU usage percentage - using container CPU usage
-		cpuData, err = c.queryRange(ctx, cpuQuery, start, now, step)
-		if err != nil {
-			return nil, fmt.Errorf("error querying CPU usage: %w", err)
+	// The four range queries are independent, so they run concurrently; this
+	// shaves the dashboard chart latency from the sum of four Prometheus
+	// round-trips down to the slowest single one. Each goroutine writes only
+	// its own result/error slots, so no extra synchronization is needed
+	// beyond the WaitGroup.
+	var (
+		cpuData, memoryData, networkInData, networkOutData []UsageDataPoint
+		cpuErr, memoryErr, networkInErr, networkOutErr     error
+		wg                                                 sync.WaitGroup
+	)
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		if cpuQuery == "" {
+			// CPU utilization may be intentionally disabled (namespace quota
+			// without cluster-capacity fallback); leave the series empty.
+			cpuData = []UsageDataPoint{}
+			return
 		}
-	}
-
-	memoryData := []UsageDataPoint{}
-	if memoryQuery != "" {
-		// Query Memory usage percentage - using container memory usage
-		memoryData, err = c.queryRange(ctx, memoryQuery, start, now, step)
-		if err != nil {
-			return nil, fmt.Errorf("error querying Memory usage: %w", err)
+		cpuData, cpuErr = c.queryRange(ctx, cpuQuery, start, now, step)
+	}()
+	go func() {
+		defer wg.Done()
+		if memoryQuery == "" {
+			memoryData = []UsageDataPoint{}
+			return
 		}
-	}
+		memoryData, memoryErr = c.queryRange(ctx, memoryQuery, start, now, step)
+	}()
+	go func() {
+		defer wg.Done()
+		networkInData, networkInErr = c.queryRange(ctx, networkInQuery, start, now, step)
+	}()
+	go func() {
+		defer wg.Done()
+		networkOutData, networkOutErr = c.queryRange(ctx, networkOutQuery, start, now, step)
+	}()
+	wg.Wait()
 
-	// Query Network incoming bytes rate (bytes per second)
-	networkInData, err := c.queryRange(ctx, networkInQuery, start, now, step)
-	if err != nil {
-		klog.Warningf("network incoming query failed, fallback to empty series: query=%s err=%v", networkInQuery, err)
+	// CPU and memory failures are fatal (they are the primary chart series);
+	// network failures degrade to empty series exactly as before.
+	if cpuErr != nil {
+		return nil, fmt.Errorf("error querying CPU usage: %w", cpuErr)
+	}
+	if memoryErr != nil {
+		return nil, fmt.Errorf("error querying Memory usage: %w", memoryErr)
+	}
+	if networkInErr != nil {
+		klog.Warningf("network incoming query failed, fallback to empty series: query=%s err=%v", networkInQuery, networkInErr)
 		networkInData = []UsageDataPoint{}
 	}
-
-	// Query Network outgoing bytes rate (bytes per second)
-	networkOutData, err := c.queryRange(ctx, networkOutQuery, start, now, step)
-	if err != nil {
-		klog.Warningf("network outgoing query failed, fallback to empty series: query=%s err=%v", networkOutQuery, err)
+	if networkOutErr != nil {
+		klog.Warningf("network outgoing query failed, fallback to empty series: query=%s err=%v", networkOutQuery, networkOutErr)
 		networkOutData = []UsageDataPoint{}
 	}
 

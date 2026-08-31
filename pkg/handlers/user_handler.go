@@ -71,38 +71,6 @@ type createPasswordUser struct {
 	Name     string `json:"name"`
 }
 
-func CreateSuperUser(c *gin.Context) {
-	var userreq createPasswordUser
-	if err := c.ShouldBindJSON(&userreq); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	uc, err := model.CountUsers()
-	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to count users"})
-		return
-	}
-
-	if uc > 0 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "super user already exists"})
-		return
-	}
-	user := &model.User{
-		Username: userreq.Username,
-		Password: userreq.Password,
-		Name:     userreq.Name,
-		Provider: "password",
-	}
-
-	if err := model.AddSuperUser(user); err != nil {
-		c.JSON(500, gin.H{"error": "failed to create super user"})
-		return
-	}
-	rbac.SyncNow <- struct{}{}
-	c.JSON(201, user)
-}
-
 func CreatePasswordUser(c *gin.Context) {
 	var userreq createPasswordUser
 	if err := c.ShouldBindJSON(&userreq); err != nil {

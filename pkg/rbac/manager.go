@@ -63,6 +63,9 @@ func loadRolesFromDB() error {
 	rwlock.Lock()
 	RBACConfig = cfg
 	rwlock.Unlock()
+	// Roles may have been edited, so previously memoized regex patterns can
+	// no longer be trusted; the cache rebuilds lazily on the next check.
+	ClearCompiledPatternCache()
 	return nil
 }
 

@@ -119,7 +119,11 @@ func clientOptionsForContextNamespace(contextNamespace string) kube.ClientOption
 	if contextNamespace == "" || common.IsNamespaceScopeExempt(contextNamespace) {
 		return kube.ClientOptions{}
 	}
-	return kube.ClientOptions{DisableCache: true}
+	// Namespace-scoped contexts (Sealos workspaces) previously disabled the
+	// informer cache entirely, so every resource read hit the API server.
+	// Keep the cache but restrict it to the workspace namespace: namespaced
+	// reads are served locally, cluster-scoped types keep using direct calls.
+	return kube.ClientOptions{CacheNamespaces: []string{contextNamespace}}
 }
 
 func (cs *ClientSet) applyNamespaceScope(contextNamespace string) {

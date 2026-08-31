@@ -96,7 +96,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 			"status": "ok",
 		})
 	})
-	r.GET("/api/v1/init_check", handlers.InitCheck)
 	r.GET("/api/v1/version", version.GetVersion)
 	// Auth routes (no auth required)
 	authHandler := auth.NewAuthHandler(cm)
@@ -120,10 +119,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 
 	// admin apis
 	adminAPI := r.Group("/api/v1/admin")
-	// Initialize the setup API without authentication.
-	// Once users are configured, this API cannot be used.
-	adminAPI.POST("/users/create_super_user", handlers.CreateSuperUser)
-	adminAPI.POST("/clusters/import", cm.ImportClustersFromKubeconfig)
 	adminAPI.Use(authHandler.RequireAuth(), authHandler.RequireAdmin())
 	{
 		adminAPI.GET("/audit-logs", handlers.ListAuditLogs)

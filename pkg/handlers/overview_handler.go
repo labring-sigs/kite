@@ -2,16 +2,19 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
+	"golang.org/x/sync/errgroup"
 	v1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -156,9 +159,13 @@ func listOverviewPods(ctx context.Context, cs *cluster.ClientSet) (*v1.PodList, 
 	return pods, nil
 }
 
-func applyOverviewNamespaceQuota(ctx context.Context, cs *cluster.ClientSet, summary *overviewResourceSummary) {
+// fetchOverviewNamespaceQuota reads the aggregated ResourceQuota hard limits
+// for a namespace-scoped cluster. It only fetches values; applying them to
+// the summary happens after all parallel list calls have finished so the
+// quota overwrite cannot race the allocatable accumulation.
+func fetchOverviewNamespaceQuota(ctx context.Context, cs *cluster.ClientSet) (cpuQuotaMilli, memoryQuotaBytes int64, hasCPUQuota, hasMemoryQuota bool) {
 	if !cs.NamespaceScoped || cs.Namespace == "" {
-		return
+		return 0, 0, false, false
 	}
 
 	var quotaList v1.ResourceQuotaList
@@ -168,17 +175,29 @@ func applyOverviewNamespaceQuota(ctx context.Context, cs *cluster.ClientSet, sum
 		} else {
 			klog.Warningf("overview: failed to list resourcequotas for namespace %s: %v", cs.Namespace, err)
 		}
-		return
+		return 0, 0, false, false
 	}
 
-	cpuQuotaMilli, memoryQuotaBytes, hasCPUQuota, hasMemoryQuota := extractNamespaceQuotaHard(quotaList.Items)
-	summary.applyNamespaceQuota(cpuQuotaMilli, memoryQuotaBytes, hasCPUQuota, hasMemoryQuota)
+	return extractNamespaceQuotaHard(quotaList.Items)
 }
 
-func listOverviewNamespaces(ctx context.Context, cs *cluster.ClientSet) (*v1.NamespaceList, error) {
-	namespaces := &v1.NamespaceList{}
+// newMetadataList builds a PartialObjectMetadataList for the given list kind.
+// Overview only counts namespaces/services/ingresses/PVCs, so asking for
+// metadata-only objects avoids transferring and deep-copying full specs; the
+// informer cache also keeps a much cheaper metadata-only informer for these.
+func newMetadataList(gvk schema.GroupVersionKind) *metav1.PartialObjectMetadataList {
+	list := &metav1.PartialObjectMetadataList{}
+	list.SetGroupVersionKind(gvk)
+	return list
+}
+
+func listOverviewNamespaces(ctx context.Context, cs *cluster.ClientSet) (*metav1.PartialObjectMetadataList, error) {
+	namespaces := newMetadataList(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "NamespaceList"})
 	if cs.NamespaceScoped && cs.Namespace != "" {
-		namespaces.Items = append(namespaces.Items, v1.Namespace{})
+		// A namespace-scoped view always sees exactly its own namespace; the
+		// empty metadata item keeps the count at 1 without a cluster-scoped
+		// list the caller usually cannot perform.
+		namespaces.Items = append(namespaces.Items, metav1.PartialObjectMetadata{})
 		return namespaces, nil
 	}
 	if err := cs.K8sClient.List(ctx, namespaces, &client.ListOptions{}); err != nil {
@@ -191,32 +210,32 @@ func listOverviewNamespaces(ctx context.Context, cs *cluster.ClientSet) (*v1.Nam
 	return namespaces, nil
 }
 
-func listOverviewServices(ctx context.Context, cs *cluster.ClientSet) (*v1.ServiceList, error) {
-	services := &v1.ServiceList{}
+func listOverviewServices(ctx context.Context, cs *cluster.ClientSet) (*metav1.PartialObjectMetadataList, error) {
+	services := newMetadataList(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ServiceList"})
 	if err := cs.K8sClient.List(ctx, services, listOptionsForScopedNamespace(cs)); err != nil {
 		return nil, err
 	}
 	return services, nil
 }
 
-func listOverviewIngresses(ctx context.Context, cs *cluster.ClientSet) (*networkingv1.IngressList, error) {
-	ingresses := &networkingv1.IngressList{}
+func listOverviewIngresses(ctx context.Context, cs *cluster.ClientSet) (*metav1.PartialObjectMetadataList, error) {
+	ingresses := newMetadataList(schema.GroupVersionKind{Group: "networking.k8s.io", Version: "v1", Kind: "IngressList"})
 	if err := cs.K8sClient.List(ctx, ingresses, listOptionsForScopedNamespace(cs)); err != nil {
 		if isPermissionDeniedError(err) {
 			klog.Warningf("overview: skip ingresses for cluster %s due to permission: %v", cs.Name, err)
-			return &networkingv1.IngressList{}, nil
+			return newMetadataList(schema.GroupVersionKind{Group: "networking.k8s.io", Version: "v1", Kind: "IngressList"}), nil
 		}
 		return nil, err
 	}
 	return ingresses, nil
 }
 
-func listOverviewPVCs(ctx context.Context, cs *cluster.ClientSet) (*v1.PersistentVolumeClaimList, error) {
-	pvcs := &v1.PersistentVolumeClaimList{}
+func listOverviewPVCs(ctx context.Context, cs *cluster.ClientSet) (*metav1.PartialObjectMetadataList, error) {
+	pvcs := newMetadataList(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "PersistentVolumeClaimList"})
 	if err := cs.K8sClient.List(ctx, pvcs, listOptionsForScopedNamespace(cs)); err != nil {
 		if isPermissionDeniedError(err) {
 			klog.Warningf("overview: skip persistentvolumeclaims for cluster %s due to permission: %v", cs.Name, err)
-			return &v1.PersistentVolumeClaimList{}, nil
+			return newMetadataList(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "PersistentVolumeClaimList"}), nil
 		}
 		return nil, err
 	}
@@ -224,8 +243,6 @@ func listOverviewPVCs(ctx context.Context, cs *cluster.ClientSet) (*v1.Persisten
 }
 
 func GetOverview(c *gin.Context) {
-	ctx := c.Request.Context()
-
 	cs := c.MustGet("cluster").(*cluster.ClientSet)
 	user := c.MustGet("user").(model.User)
 	if len(user.Roles) == 0 {
@@ -233,48 +250,93 @@ func GetOverview(c *gin.Context) {
 		return
 	}
 
-	nodes, err := listOverviewNodes(ctx, cs)
+	// The dashboard polls this endpoint every 30s and every browser mount or
+	// window focus fires it again, so the serialized response is cached
+	// per cluster+user and refreshed in the background once it goes stale.
+	body, state, err := overviewResponseCache.Serve(c.Request.Context(), overviewCacheKey(cs, user), overviewRefreshTimeout, func(ctx context.Context) ([]byte, error) {
+		overview, err := buildOverview(ctx, cs)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(overview)
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	c.Header(overviewCacheHeader, string(state))
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+}
 
-	pods, err := listOverviewPods(ctx, cs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+// buildOverview collects every overview input in parallel. Previously the
+// seven list calls ran sequentially, so a cold informer or a slow API server
+// multiplied the page-load latency; the lists are independent and safe to run
+// concurrently.
+func buildOverview(ctx context.Context, cs *cluster.ClientSet) (*OverviewData, error) {
+	var (
+		nodes      *v1.NodeList
+		pods       *v1.PodList
+		namespaces *metav1.PartialObjectMetadataList
+		services   *metav1.PartialObjectMetadataList
+		ingresses  *metav1.PartialObjectMetadataList
+		pvcs       *metav1.PartialObjectMetadataList
+
+		// Namespace quota values are fetched concurrently but only applied
+		// after Wait, because applying them overwrites the allocatable totals
+		// that collectNodeStats accumulates.
+		quotaCPUMilli, quotaMemoryBytes int64
+		quotaHasCPU, quotaHasMemory     bool
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var err error
+		nodes, err = listOverviewNodes(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		pods, err = listOverviewPods(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		namespaces, err = listOverviewNamespaces(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		services, err = listOverviewServices(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		ingresses, err = listOverviewIngresses(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		pvcs, err = listOverviewPVCs(gctx, cs)
+		return err
+	})
+	g.Go(func() error {
+		// Quota lookup never fails the overview; permission or API problems
+		// are logged inside the fetch and degrade to the cluster-wide basis.
+		quotaCPUMilli, quotaMemoryBytes, quotaHasCPU, quotaHasMemory = fetchOverviewNamespaceQuota(gctx, cs)
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	resourceSummary := newOverviewResourceSummary()
 	readyNodes := resourceSummary.collectNodeStats(nodes.Items)
 	runningPods := resourceSummary.collectPodStats(pods.Items)
-	applyOverviewNamespaceQuota(ctx, cs, &resourceSummary)
-
-	namespaces, err := listOverviewNamespaces(ctx, cs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	if cs.NamespaceScoped && cs.Namespace != "" {
+		resourceSummary.applyNamespaceQuota(quotaCPUMilli, quotaMemoryBytes, quotaHasCPU, quotaHasMemory)
 	}
 
-	services, err := listOverviewServices(ctx, cs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ingresses, err := listOverviewIngresses(ctx, cs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	pvcs, err := listOverviewPVCs(ctx, cs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	overview := OverviewData{
+	return &OverviewData{
 		TotalNodes:      len(nodes.Items),
 		ReadyNodes:      readyNodes,
 		TotalPods:       len(pods.Items),
@@ -285,34 +347,5 @@ func GetOverview(c *gin.Context) {
 		TotalServices:   len(services.Items),
 		PromEnabled:     cs.PromClient != nil,
 		Resource:        resourceSummary.toMetric(),
-	}
-
-	c.JSON(http.StatusOK, overview)
-}
-
-// var (
-// 	initialized bool
-// )
-
-func InitCheck(c *gin.Context) {
-	// if initialized {
-	// 	c.JSON(http.StatusOK, gin.H{"initialized": true})
-	// 	return
-	// }
-	step := 0
-	uc, _ := model.CountUsers()
-	if uc == 0 && !common.AnonymousUserEnabled {
-		c.SetCookie("auth_token", "", -1, "/", "", false, true)
-		c.JSON(http.StatusOK, gin.H{"initialized": false, "step": step})
-		return
-	}
-	if uc > 0 || common.AnonymousUserEnabled {
-		step++
-	}
-	cc, _ := model.CountClusters()
-	if cc > 0 {
-		step++
-	}
-	initialized := step == 2
-	c.JSON(http.StatusOK, gin.H{"initialized": initialized, "step": step})
+	}, nil
 }
