@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/kube"
+	"github.com/zxh326/kite/pkg/model"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,6 +70,7 @@ func TestListBuiltinSidebarCRDsReturnsExistingBuiltins(t *testing.T) {
 				Build(),
 		},
 	})
+	c.Set("user", model.User{Username: "tester"})
 
 	ListBuiltinSidebarCRDs(c)
 
@@ -139,6 +141,7 @@ func TestListBuiltinSidebarCRDsSkipsForbiddenEntries(t *testing.T) {
 	c.Set("cluster", &cluster.ClientSet{
 		K8sClient: &kube.K8sClient{Client: fakeClient},
 	})
+	c.Set("user", model.User{Username: "tester"})
 
 	ListBuiltinSidebarCRDs(c)
 
@@ -151,4 +154,37 @@ func TestListBuiltinSidebarCRDsSkipsForbiddenEntries(t *testing.T) {
 	// Only the readable CRD is returned; the forbidden one is skipped.
 	require.Len(t, response.Items, 1)
 	assert.Equal(t, "devboxes.devbox.sealos.io", response.Items[0].Name)
+}
+
+// TestListBuiltinSidebarCRDsSurfacesUnauthorized verifies that a 401 from
+// the API server (broken cluster credentials, not an admin-only resource) is
+// surfaced as an error instead of being silently swallowed like a 403.
+func TestListBuiltinSidebarCRDsSurfacesUnauthorized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sidebarCRDResponseCache.Clear()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, apiextensionsv1.AddToScheme(scheme))
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				// Every CRD read fails as it would with expired credentials.
+				return apierrors.NewUnauthorized("token expired")
+			},
+		}).
+		Build()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/sidebar/builtin-crds", nil)
+	c.Set("cluster", &cluster.ClientSet{
+		K8sClient: &kube.K8sClient{Client: fakeClient},
+	})
+	c.Set("user", model.User{Username: "tester"})
+
+	ListBuiltinSidebarCRDs(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

@@ -78,8 +78,11 @@ func resourceUsageHistoryCacheKey(cs *cluster.ClientSet, user model.User, durati
 	return strings.Join(parts, responseCacheKeyFieldSeparator)
 }
 
-// sidebarCRDCacheKey scopes builtin-CRD entries by cluster only; the handler
-// returns the same payload to every authenticated user of the cluster.
-func sidebarCRDCacheKey(cs *cluster.ClientSet) string {
-	return strings.Join(clusterCacheIdentity(cs), responseCacheKeyFieldSeparator)
+// sidebarCRDCacheKey scopes builtin-CRD entries by cluster and user. Today
+// every caller of a cluster shares its stored credentials, so responses are
+// identical per cluster record; keying by user as well keeps the cache
+// correct if credential handling ever becomes per-user.
+func sidebarCRDCacheKey(cs *cluster.ClientSet, user model.User) string {
+	parts := append(clusterCacheIdentity(cs), user.Key())
+	return strings.Join(parts, responseCacheKeyFieldSeparator)
 }

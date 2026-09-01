@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/zxh326/kite/pkg/cluster"
+	"github.com/zxh326/kite/pkg/model"
 	"golang.org/x/sync/errgroup"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -46,11 +47,12 @@ type sidebarCRDInfo struct {
 
 func ListBuiltinSidebarCRDs(c *gin.Context) {
 	cs := c.MustGet("cluster").(*cluster.ClientSet)
+	user := c.MustGet("user").(model.User)
 
 	// CRD presence changes rarely, so the serialized discovery response is
-	// cached per cluster instead of re-reading the same five CRDs on every
+	// cached per cluster+user instead of re-reading the same CRDs on every
 	// page load.
-	body, state, err := sidebarCRDResponseCache.Serve(c.Request.Context(), sidebarCRDCacheKey(cs), sidebarCRDRefreshTimeout, func(ctx context.Context) ([]byte, error) {
+	body, state, err := sidebarCRDResponseCache.Serve(c.Request.Context(), sidebarCRDCacheKey(cs, user), sidebarCRDRefreshTimeout, func(ctx context.Context) ([]byte, error) {
 		items, err := listBuiltinSidebarCRDItems(ctx, cs)
 		if err != nil {
 			return nil, err
@@ -67,10 +69,12 @@ func ListBuiltinSidebarCRDs(c *gin.Context) {
 
 // listBuiltinSidebarCRDItems resolves every builtin CRD concurrently. The
 // lookups are independent; CRDs that are not installed (NotFound) or not
-// readable by the caller's credentials (Forbidden/Unauthorized, e.g. the
-// cluster-scoped CiliumEgressGatewayPolicy for namespace-scoped workspace
-// users) are skipped instead of failing the whole sidebar response. Results
-// keep the declaration order via their index slots.
+// readable by the caller's credentials (Forbidden, e.g. the cluster-scoped
+// CiliumEgressGatewayPolicy for namespace-scoped workspace users) are
+// skipped instead of failing the whole sidebar response. Unauthorized (401)
+// is NOT skipped: it signals broken cluster credentials rather than an
+// admin-only resource, and must surface as an error. Results keep the
+// declaration order via their index slots.
 func listBuiltinSidebarCRDItems(ctx context.Context, cs *cluster.ClientSet) ([]sidebarCRDInfo, error) {
 	results := make([]*sidebarCRDInfo, len(builtinSidebarCRDNames))
 
@@ -83,7 +87,7 @@ func listBuiltinSidebarCRDItems(ctx context.Context, cs *cluster.ClientSet) ([]s
 					// CRD not installed on this cluster: leave the slot empty.
 					return nil
 				}
-				if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+				if apierrors.IsForbidden(err) {
 					// The credentials may not see this CRD (admin-only entry);
 					// hide it for this caller rather than breaking the sidebar.
 					klog.V(1).Infof("sidebar: skip builtin CRD %s for cluster %s due to permissions: %v", crdName, cs.Name, err)
