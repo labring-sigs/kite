@@ -87,6 +87,10 @@ func createClientSetFromConfig(name, content, prometheusURL string) (*ClientSet,
 		klog.Warningf("Failed to create REST config for cluster %s: %v", name, err)
 		return nil, err
 	}
+	// Sealos-managed clusters authenticate via the live token store, so a
+	// desktop token rotation only needs a store update at next login instead
+	// of a full client rebuild.
+	prepareSealosTokenInjection(name, restConfig)
 	contextNamespace := parseCurrentContextNamespace(content)
 	cs, err := newClientSet(name, restConfig, prometheusURL, clientOptionsForContextNamespace(contextNamespace))
 	if err != nil {
@@ -473,6 +477,15 @@ func (cm *ClusterManager) WaitForCluster(name string, timeout time.Duration) boo
 	return cm.waitForCluster(name, timeout, false)
 }
 
+// HasCluster reports whether a live client for the cluster currently exists
+// in the manager's in-memory set.
+func (cm *ClusterManager) HasCluster(name string) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	_, ok := cm.clusters[name]
+	return ok
+}
+
 func (cm *ClusterManager) WaitForClusterRefresh(name string, timeout time.Duration) bool {
 	return cm.waitForCluster(name, timeout, true)
 }
@@ -703,6 +716,9 @@ func stopClientSet(name string, clientSet *ClientSet) {
 		return
 	}
 	clientSet.K8sClient.Stop(name)
+	// Drop the token store entry as well so rotated tokens of removed clusters
+	// do not linger in memory.
+	DeleteSealosClusterToken(name)
 }
 
 // shouldUpdateCluster decides whether the cached ClientSet needs to be updated
@@ -721,8 +737,18 @@ func shouldUpdateCluster(cs *ClientSet, cluster *model.Cluster) bool {
 		return true
 	}
 
-	// kubeconfig change
-	if cs.config != string(cluster.Config) {
+	// kubeconfig change. For Sealos-managed clusters the comparison uses the
+	// kubeconfig identity (server/context/user/namespace) instead of the raw
+	// bytes: a token rotation alone is already handled by the live token
+	// store and must not churn informer rebuilds on every sync pass.
+	if IsSealosManagedCluster(cluster.Name) {
+		newIdentity, _ := ParseSealosKubeconfig(string(cluster.Config))
+		oldIdentity, _ := ParseSealosKubeconfig(cs.config)
+		if newIdentity == "" || newIdentity != oldIdentity {
+			klog.Infof("Kubeconfig identity changed for cluster %s, updating", cluster.Name)
+			return true
+		}
+	} else if cs.config != string(cluster.Config) {
 		klog.Infof("Kubeconfig changed for cluster %s, updating", cluster.Name)
 		return true
 	}

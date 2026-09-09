@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import * as sealosDesktopSDK from 'sealos-desktop-sdk/app'
 
 import { readAuthToken, writeAuthToken } from '@/lib/auth-token'
+import type { Cluster } from '@/types/api'
 import {
   CURRENT_CLUSTER_CHANGE_EVENT,
   readCurrentCluster,
@@ -191,19 +192,25 @@ const getSealosAppClient = (): SealosAppClient | null => {
   return sdkModule.sealosApp ?? sdkModule.default?.sealosApp ?? null
 }
 
-// localStorage key holding the fingerprint of the Sealos desktop session
-// that last completed a full login, used to skip redundant logins when the
-// desktop session has not changed.
+// localStorage keys holding the identity fingerprint (and its timestamp) of
+// the Sealos desktop session that last completed a full login, used to skip
+// redundant logins when the user+workspace identity has not changed.
 const SEALOS_SESSION_FINGERPRINT_KEY = 'kite.sealos.session-fingerprint'
+const SEALOS_SESSION_FINGERPRINT_TS_KEY = 'kite.sealos.session-fingerprint-ts'
 
-// fingerprintSealosSession builds a cheap FNV-1a fingerprint of the desktop
-// session for change detection. It is not a security boundary — the backend
-// re-validates the Sealos JWT on every actual login.
-const fingerprintSealosSession = (
-  token: string,
-  kubeconfig: string
-): string => {
-  const input = token + '\n' + kubeconfig
+// Skipped logins are capped at this age: the backend's running client
+// authenticates with the token recorded at the last full login, and desktop
+// tokens rotate, so the skip must not outlive the token. A full login after
+// the bound refreshes it (cheap since the token-injection change).
+const SEALOS_LOGIN_SKIP_MAX_AGE_MS = 4 * 60 * 60 * 1000 // 4 hours
+
+// fingerprintSealosSession builds a cheap FNV-1a fingerprint for change
+// detection. It is not a security boundary — the backend re-validates the
+// Sealos JWT on every actual login. NOTE: it fingerprints the session's
+// stable identity (user + workspace), never the rotating token/kubeconfig,
+// or it would never match.
+const fingerprintSealosSession = (userId: string, workspaceId: string): string => {
+  const input = userId + '\n' + workspaceId
   let hash = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
     hash ^= input.charCodeAt(i)
@@ -398,16 +405,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
             return false
           }
 
-          // Skip the whole login round-trip when the desktop session is
-          // unchanged since the last successful login and the Kite session
-          // is still valid. Every page load and focus re-sync would
-          // otherwise POST a full login again (the multi-second entry cost).
+          // Skip the whole login round-trip when the desktop session's
+          // identity (user + workspace) is unchanged since the last
+          // successful login, the skip is still fresh, the current cluster
+          // is healthy, and the Kite session is valid. The session token and
+          // kubeconfig rotate on every refresh, so fingerprinting them would
+          // never match — identity is what decides whether a re-login is
+          // needed.
+          const sessionUserId = sealosSession.user?.userId ?? ''
+          const sessionWorkspaceId = sealosSession.user?.nsid ?? ''
+          // Both identity fields are required for a trustworthy fingerprint;
+          // missing values would collide across field-less sessions.
+          const canFingerprint =
+            sessionUserId !== '' && sessionWorkspaceId !== ''
           const fingerprint = fingerprintSealosSession(
-            sealosSession.token,
-            sealosSession.kubeconfig
+            sessionUserId,
+            sessionWorkspaceId
           )
+          const lastLoginTs = Number(
+            localStorage.getItem(SEALOS_SESSION_FINGERPRINT_TS_KEY) || 0
+          )
+          const skipIsFresh =
+            Date.now() - lastLoginTs < SEALOS_LOGIN_SKIP_MAX_AGE_MS
+          // Self-heal guard: only skip when the clusters cache can actually
+          // PROVE the current cluster is healthy. On a cold load the cache is
+          // empty (AuthProvider runs before ClusterProvider fetches), where
+          // skipping would blind this guard — a full login is cheap now. And
+          // if the cluster is already in a build-error state (e.g. the
+          // backend's injected token has expired), a full login refreshes
+          // the token store instead of skipping into a broken state.
+          const cachedClusters = queryClient.getQueryData<Cluster[]>([
+            'clusters',
+          ])
+          const cachedClusterInfo = cachedClusters?.find(
+            (c) => c.name === readCurrentCluster()
+          )
+          const clusterProvenHealthy =
+            Boolean(cachedClusterInfo) && !cachedClusterInfo?.error
           if (
             currentUser &&
+            canFingerprint &&
+            skipIsFresh &&
+            clusterProvenHealthy &&
             localStorage.getItem(SEALOS_SESSION_FINGERPRINT_KEY) === fingerprint
           ) {
             return true
@@ -490,9 +529,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
           } else {
             await checkAuthInternal({ preserveUserOnFailure: true })
           }
-          // Mark this desktop session as logged in: subsequent page loads
-          // and focus re-syncs with the same session skip the login.
-          localStorage.setItem(SEALOS_SESSION_FINGERPRINT_KEY, fingerprint)
+          // Mark this desktop session identity as logged in: subsequent page
+          // loads and focus re-syncs with the same user+workspace skip the
+          // login until the freshness bound is reached. Only stored when the
+          // identity fields are actually present.
+          if (canFingerprint) {
+            localStorage.setItem(SEALOS_SESSION_FINGERPRINT_KEY, fingerprint)
+            localStorage.setItem(
+              SEALOS_SESSION_FINGERPRINT_TS_KEY,
+              String(Date.now())
+            )
+          }
           return true
         } catch (error) {
           console.error('Sealos session sync failed:', error)
@@ -678,6 +725,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         writeCurrentCluster(null)
         // Drop the session fingerprint so the next login always re-syncs.
         localStorage.removeItem(SEALOS_SESSION_FINGERPRINT_KEY)
+        localStorage.removeItem(SEALOS_SESSION_FINGERPRINT_TS_KEY)
         window.location.href = withSubPath('/login?reason=logout')
       } else {
         throw new Error('Failed to logout')

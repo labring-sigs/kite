@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
 	"github.com/zxh326/kite/pkg/permissions"
@@ -183,10 +185,17 @@ func getSealosDefaultPrometheusURL() string {
 	return strings.TrimSpace(common.SealosDefaultPrometheusURL)
 }
 
+// parseSealosKubeconfig delegates to the cluster package's identity parser
+// (kept as a thin wrapper so existing callers and tests stay put).
+func parseSealosKubeconfig(kubeconfig string) (identity, token string) {
+	return cluster.ParseSealosKubeconfig(kubeconfig)
+}
+
 // upsertSealosCluster creates or refreshes the cluster record for a Sealos
-// login and reports whether anything actually changed. The caller uses the
-// changed flag to skip redundant role/RBAC sync work on repeat logins with
-// an identical kubeconfig.
+// login and reports whether the kubeconfig's identity changed. The stored
+// config is still updated whenever the raw bytes differ (so a rotated token
+// persists), but role/RBAC sync and client rebuilds are only needed when the
+// identity itself changed — not on every token rotation.
 func upsertSealosCluster(clusterName, kubeconfig, namespace string) (bool, error) {
 	defaultPrometheusURL := getSealosDefaultPrometheusURL()
 	description := "Managed by Sealos SSO"
@@ -209,11 +218,17 @@ func upsertSealosCluster(clusterName, kubeconfig, namespace string) (bool, error
 		return false, err
 	}
 
+	newIdentity, _ := parseSealosKubeconfig(kubeconfig)
+	storedIdentity, _ := parseSealosKubeconfig(string(cluster.Config))
+	identityChanged := newIdentity == "" || newIdentity != storedIdentity
+
 	updates := buildSealosClusterUpdates(cluster, description, kubeconfig, defaultPrometheusURL)
-	if len(updates) == 0 {
-		return false, nil
+	if len(updates) > 0 {
+		if err := model.UpdateCluster(cluster, updates); err != nil {
+			return false, err
+		}
 	}
-	return true, model.UpdateCluster(cluster, updates)
+	return identityChanged, nil
 }
 
 func buildSealosClusterUpdates(cluster *model.Cluster, description, kubeconfig, defaultPrometheusURL string) map[string]interface{} {
@@ -400,11 +415,17 @@ func (h *AuthHandler) SealosLogin(c *gin.Context) {
 	}
 
 	clusterName := buildSealosClusterName(userID, workspaceID)
-	clusterChanged, err := upsertSealosCluster(clusterName, req.Kubeconfig, workspaceID)
+	identityChanged, err := upsertSealosCluster(clusterName, req.Kubeconfig, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sync sealos cluster"})
 		return
 	}
+
+	// Always record the freshest token: Sealos desktop kubeconfigs rotate
+	// their embedded token on every session refresh, and the running client
+	// picks the new token up from the store instead of needing a rebuild.
+	_, freshToken := parseSealosKubeconfig(req.Kubeconfig)
+	cluster.SetSealosClusterToken(clusterName, freshToken)
 
 	user, err := upsertSealosUser(claims, req.User)
 	if err != nil {
@@ -416,13 +437,13 @@ func (h *AuthHandler) SealosLogin(c *gin.Context) {
 		return
 	}
 
-	// Role/RBAC sync runs on every login where the cluster binding changed
-	// (new workspace or rotated kubeconfig). On repeat logins with an
-	// identical kubeconfig the role is already correct, so the writes are
-	// skipped — the cheap existence checks below keep the sync self-healing
-	// if the role or assignment was deleted manually in the meantime.
+	// Role/RBAC sync runs on every login where the cluster binding's identity
+	// changed (new workspace or a different kubeconfig). A mere token
+	// rotation does not change the identity, so the writes are skipped — the
+	// cheap existence checks below keep the sync self-healing if the role or
+	// assignment was deleted manually in the meantime.
 	roleName := buildSealosRoleName(userID)
-	needRoleSync := clusterChanged
+	needRoleSync := identityChanged
 	if !needRoleSync {
 		existingRole, roleErr := model.GetRoleByName(roleName)
 		switch {
@@ -432,6 +453,15 @@ func (h *AuthHandler) SealosLogin(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check sealos role"})
 			return
 		default:
+			// Existence alone is not enough: a manually edited or previously
+			// stale role must also still grant THIS exact cluster and
+			// workspace, otherwise the login would keep the user bound to the
+			// wrong scope while skipping the resync.
+			if !slices.Equal(existingRole.Clusters, []string{clusterName}) ||
+				!slices.Equal(existingRole.Namespaces, buildSealosRoleNamespaces(workspaceID)) {
+				needRoleSync = true
+				break
+			}
 			var count int64
 			if err := model.DB.Model(&model.RoleAssignment{}).
 				Where("role_id = ? AND subject_type = ? AND subject = ?", existingRole.ID, model.SubjectTypeUser, user.Username).
@@ -468,10 +498,13 @@ func (h *AuthHandler) SealosLogin(c *gin.Context) {
 	}
 
 	if h.clusterManager != nil {
-		// Only this user's cluster needs (re)building — a full sync of every
-		// tenant cluster on every login was a major cost on large platforms.
-		h.clusterManager.TriggerSyncForCluster(clusterName)
-		_ = h.clusterManager.WaitForCluster(clusterName, 5*time.Second)
+		// A rebuild (and the blocking wait for it) is only needed when the
+		// kubeconfig identity changed or no live client exists. A token
+		// rotation alone is already covered by the token store update above.
+		if identityChanged || !h.clusterManager.HasCluster(clusterName) {
+			h.clusterManager.TriggerSyncForCluster(clusterName)
+			_ = h.clusterManager.WaitForCluster(clusterName, 5*time.Second)
+		}
 	}
 
 	user.Roles = rbac.GetUserRoles(*user)

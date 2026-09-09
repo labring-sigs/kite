@@ -89,6 +89,42 @@ func SweepStaleSealosUsers(now time.Time, ttlDays, limit int) (int, error) {
 		return 0, err
 	}
 
+	// Ownership must be resolved exactly, not by raw prefix: cluster names
+	// are "sealos-<userPart>-<workspacePart>" and sanitizeNamePart is NOT
+	// collision-proof — a stale user "a" would otherwise also match the
+	// active user "a-b"'s clusters ("sealos-a-b-c" starts with "sealos-a-").
+	// A cluster is therefore assigned to the sealos user with the LONGEST
+	// matching prefix, and a stale user may only delete clusters whose
+	// longest-prefix owner is itself.
+	var allSealosUsers []model.User
+	if err := model.DB.Select("sub").Where("provider = ?", sealosProvider).Find(&allSealosUsers).Error; err != nil {
+		return 0, err
+	}
+	ownerPrefixes := make([]string, 0, len(allSealosUsers))
+	for _, su := range allSealosUsers {
+		if id, ok := strings.CutPrefix(su.Sub, sealosProvider+":"); ok && strings.TrimSpace(id) != "" {
+			ownerPrefixes = append(ownerPrefixes, "sealos-"+sanitizeNamePart(id)+"-")
+		}
+	}
+	var allSealosClusters []model.Cluster
+	if err := model.DB.Where("name LIKE ?", "sealos-%").Find(&allSealosClusters).Error; err != nil {
+		return 0, err
+	}
+	// longestPrefixOwner returns the owner prefix (longest match) for a
+	// cluster name, or false when no sealos user prefix matches.
+	longestPrefixOwner := func(clusterName string) (string, bool) {
+		best := ""
+		for _, p := range ownerPrefixes {
+			if strings.HasPrefix(clusterName, p) && len(p) > len(best) {
+				best = p
+			}
+		}
+		if best == "" {
+			return "", false
+		}
+		return best, true
+	}
+
 	removed := 0
 	for i := range staleUsers {
 		u := &staleUsers[i]
@@ -101,25 +137,25 @@ func SweepStaleSealosUsers(now time.Time, ttlDays, limit int) (int, error) {
 
 		clusterNames := map[string]struct{}{}
 
-		// (a) Name-prefix match: cluster names are built as
-		// "sealos-<userPart>-<workspacePart>", and because ensureSealosRole
-		// keeps only the most recent cluster in the role, older workspaces
-		// are orphaned from it and only findable by name.
-		prefix := "sealos-" + sanitizeNamePart(userID) + "-"
-		var namedClusters []model.Cluster
-		if err := model.DB.Where("name LIKE ?", prefix+"%").Find(&namedClusters).Error; err != nil {
-			return removed, err
-		}
-		for _, cl := range namedClusters {
-			clusterNames[cl.Name] = struct{}{}
+		// (a) Orphaned older workspace clusters: only those whose
+		// longest-prefix owner is exactly this stale user.
+		ownerPrefix := "sealos-" + sanitizeNamePart(userID) + "-"
+		for _, cl := range allSealosClusters {
+			owner, ok := longestPrefixOwner(cl.Name)
+			if ok && owner == ownerPrefix {
+				clusterNames[cl.Name] = struct{}{}
+			}
 		}
 
 		// (b) The auto-generated role also references the current cluster.
+		// Role rows are persisted and admin-editable, so role-derived names
+		// must pass the same ownership proof as name-derived ones; otherwise
+		// an edited role could make the sweep delete another user's cluster.
 		roleName := buildSealosRoleName(userID)
 		role, roleErr := model.GetRoleByName(roleName)
 		if roleErr == nil {
 			for _, name := range role.Clusters {
-				if strings.HasPrefix(name, "sealos-") {
+				if owner, ok := longestPrefixOwner(name); ok && owner == ownerPrefix {
 					clusterNames[name] = struct{}{}
 				}
 			}

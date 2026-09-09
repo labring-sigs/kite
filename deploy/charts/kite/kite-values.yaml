@@ -45,6 +45,12 @@ db:
           memory: 50Mi
       terminationPolicy: Delete
 
+# Sealos runtime values for the production deployment.
+# staleTTLDays renders KITE_SEALOS_STALE_TTL_DAYS via the chart template
+# (single source for that env var; do not also set it via extraEnvs).
+sealos:
+  staleTTLDays: 30
+
 extraEnvs:
   - name: SEALOS_AUTH_ENABLED
     value: 'true'
@@ -56,10 +62,6 @@ extraEnvs:
     value: 'http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc:8481/select/0/prometheus'
   - name: KITE_NAMESPACE_SCOPE_EXEMPT_NAMESPACES
     value: 'ns-admin'
-  # Inactivity days before Sealos auto-provisioned users/clusters are swept.
-  # Set to '0' to disable the stale cleanup.
-  - name: KITE_SEALOS_STALE_TTL_DAYS
-    value: '30'
 
 # Helm chart catalog sources.
 helmCatalog:

@@ -139,6 +139,39 @@ func TestSweepStaleSealosUsers(t *testing.T) {
 	assert.Equal(t, int64(1), countRows(t, &model.RoleAssignment{}))
 }
 
+// TestSweepStaleSealosUsersLongestPrefixOwnership proves the collision fix:
+// a stale user "a" must not sweep the active user "a-b"'s cluster even though
+// "sealos-a-b-c" starts with the raw "sealos-a-" prefix.
+func TestSweepStaleSealosUsersLongestPrefixOwnership(t *testing.T) {
+	setupStaleCleanupTestDB(t)
+
+	now := time.Now()
+	fortyDaysAgo := now.AddDate(0, 0, -40)
+	recentLogin := now.Add(-time.Hour)
+
+	// Stale user "a" owning sealos-a-x.
+	staleLogin := fortyDaysAgo
+	seedSealosUser(t, "a", []string{"x"}, &staleLogin, fortyDaysAgo)
+	// Active user "a-b" owning sealos-a-b-c — a raw "sealos-a-" prefix match
+	// that must NOT be swept with user "a".
+	seedSealosUser(t, "a-b", []string{"c"}, &recentLogin, now.AddDate(0, 0, -5))
+
+	removed, err := SweepStaleSealosUsers(now, 30, staleSweepBatchSize)
+	require.NoError(t, err)
+	assert.Equal(t, 1, removed, "only stale user a should be swept")
+
+	var clusters []model.Cluster
+	require.NoError(t, model.DB.Find(&clusters).Error)
+	require.Len(t, clusters, 1)
+	assert.Equal(t, buildSealosClusterName("a-b", "c"), clusters[0].Name,
+		"the active longer-prefix user's cluster must survive")
+
+	var users []model.User
+	require.NoError(t, model.DB.Find(&users).Error)
+	require.Len(t, users, 1)
+	assert.Equal(t, buildSealosUsername("a-b"), users[0].Username)
+}
+
 // TestSweepStaleSealosUsersSkipsNonSealosRows ensures the sweep never
 // touches password users even when they are old and inactive.
 func TestSweepStaleSealosUsersSkipsNonSealosRows(t *testing.T) {
